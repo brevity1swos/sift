@@ -1,10 +1,21 @@
 //! Ledger entry: the unit of accounting for a captured write.
+//!
+//! Note on portability: `path` is stored as `PathBuf` which serializes to
+//! OS-native separators. sift v0.1 targets Unix-like systems (macOS, Linux)
+//! because session activation relies on a filesystem symlink; Windows support
+//! is out of scope. Do not share ledger files across operating systems.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use ulid::Ulid;
 
+/// Which Claude Code tool produced the write.
+///
+/// Variants use PascalCase serialization because the `tool_name` field in
+/// Claude Code's hook payload arrives as `"Write"`, `"Edit"`, `"MultiEdit"`
+/// exactly. Keep this consistent with the upstream wire format — `Op` and
+/// `Status` below use lowercase because they are sift-internal only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum Tool {
@@ -32,11 +43,11 @@ pub enum Status {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DiffStats {
-    pub added: usize,
-    pub removed: usize,
+    pub added: u32,
+    pub removed: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
     pub id: String,              // ULID string
     pub turn: u32,
@@ -52,10 +63,13 @@ pub struct LedgerEntry {
     pub timestamp: DateTime<Utc>,
 }
 
-impl LedgerEntry {
-    pub fn new_ulid() -> String {
-        Ulid::new().to_string()
-    }
+/// Generate a fresh ULID string suitable for a new ledger entry's `id` field.
+///
+/// Kept as a module-level free function rather than an associated method on
+/// `LedgerEntry` because it does not construct an entry — callers populate
+/// other fields field-by-field.
+pub fn new_entry_id() -> String {
+    Ulid::new().to_string()
 }
 
 #[cfg(test)]
@@ -96,17 +110,13 @@ mod tests {
         let e = sample();
         let s = serde_json::to_string(&e).unwrap();
         let back: LedgerEntry = serde_json::from_str(&s).unwrap();
-        assert_eq!(back.id, e.id);
-        assert_eq!(back.turn, e.turn);
-        assert_eq!(back.tool, e.tool);
-        assert_eq!(back.op, e.op);
-        assert_eq!(back.diff_stats, e.diff_stats);
-        assert_eq!(back.snapshot_before, e.snapshot_before);
-        assert_eq!(back.snapshot_after, e.snapshot_after);
+        assert_eq!(back, e);
     }
 
     #[test]
     fn missing_rationale_defaults_to_empty() {
+        // `serde_json::json!` accepts runtime String expressions (`"a".repeat(40)`)
+        // alongside JSON literals; the macro is evaluated at runtime, not compile time.
         let raw = serde_json::json!({
             "id": "01HVXK5QZ9G7B2000000000000",
             "turn": 1,
@@ -124,8 +134,8 @@ mod tests {
     }
 
     #[test]
-    fn new_ulid_returns_26_char_string() {
-        let u = LedgerEntry::new_ulid();
+    fn new_entry_id_returns_26_char_string() {
+        let u = new_entry_id();
         assert_eq!(u.len(), 26);
     }
 }

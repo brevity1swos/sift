@@ -3,4 +3,4 @@
 pub mod entry;
 pub mod paths;
 
-pub use entry::{DiffStats, LedgerEntry, Op, Status, Tool};
+pub use entry::{new_entry_id, DiffStats, LedgerEntry, Op, Status, Tool};
