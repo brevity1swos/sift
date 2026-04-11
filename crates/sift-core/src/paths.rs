@@ -1,5 +1,6 @@
 //! `.sift/` path discovery and blob sharding.
 
+use anyhow::{ensure, Result};
 use std::path::{Path, PathBuf};
 
 /// Paths for a sift-managed project root.
@@ -31,10 +32,22 @@ impl Paths {
     pub fn session_dir(&self, id: &str) -> PathBuf { self.sessions_dir().join(id) }
 
     /// Two-char sharded blob path: `<session_dir>/snapshots/ab/cd1234...`
-    pub fn snapshot_path(&self, session_id: &str, sha1_hex: &str) -> PathBuf {
-        assert!(sha1_hex.len() >= 3, "sha1 hex must be at least 3 chars");
+    ///
+    /// `sha1_hex` is expected to be the full 40-character lowercase hex SHA-1.
+    /// Returns `Err` if it is shorter than 3 characters or not entirely ASCII,
+    /// so callers in hook paths can log and continue instead of panicking.
+    pub fn snapshot_path(&self, session_id: &str, sha1_hex: &str) -> Result<PathBuf> {
+        ensure!(
+            sha1_hex.len() >= 3,
+            "sha1 hex too short ({}), need at least 3 chars",
+            sha1_hex.len()
+        );
+        ensure!(
+            sha1_hex.is_ascii(),
+            "sha1 hex must be ASCII, got non-ASCII bytes"
+        );
         let (prefix, rest) = sha1_hex.split_at(2);
-        self.session_dir(session_id).join("snapshots").join(prefix).join(rest)
+        Ok(self.session_dir(session_id).join("snapshots").join(prefix).join(rest))
     }
 
     /// Staging record path for in-flight pre/post correlation.
@@ -66,9 +79,23 @@ mod tests {
     fn snapshot_path_is_sharded() {
         let p = Paths::new("/tmp/project");
         let sha = "abcdef1234567890";
-        let snap = p.snapshot_path("sess1", sha);
+        let snap = p.snapshot_path("sess1", sha).unwrap();
         assert!(snap.ends_with("ab/cdef1234567890"));
         assert!(snap.starts_with("/tmp/project/.sift/sessions/sess1/snapshots"));
+    }
+
+    #[test]
+    fn snapshot_path_errors_on_short_hex() {
+        let p = Paths::new("/tmp/project");
+        let err = p.snapshot_path("sess1", "ab").unwrap_err();
+        assert!(err.to_string().contains("too short"));
+    }
+
+    #[test]
+    fn snapshot_path_errors_on_non_ascii() {
+        let p = Paths::new("/tmp/project");
+        let err = p.snapshot_path("sess1", "αβγδef").unwrap_err();
+        assert!(err.to_string().contains("ASCII"));
     }
 
     #[test]
