@@ -1,4 +1,6 @@
 /target
 /.sift
-*.swp
+/.omc
+*.sw?
+.*.sw?
 .DS_Store
