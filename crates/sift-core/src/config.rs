@@ -1,5 +1,6 @@
 //! Project-level config stored at `.sift/config.toml`.
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -35,16 +36,20 @@ impl Config {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = fs::read_to_string(path)?;
-        Ok(toml::from_str(&text)?)
+        let text = fs::read_to_string(path)
+            .with_context(|| format!("reading config {}", path.display()))?;
+        toml::from_str(&text)
+            .with_context(|| format!("parsing config {}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("creating config parent {}", parent.display()))?;
         }
         let text = toml::to_string_pretty(self)?;
-        fs::write(path, text)?;
+        fs::write(path, text)
+            .with_context(|| format!("writing config {}", path.display()))?;
         Ok(())
     }
 }
@@ -77,5 +82,18 @@ mod tests {
         let back = Config::load(&p).unwrap();
         assert_eq!(back.mode, Mode::Strict);
         assert_eq!(back.ignore_globs, c.ignore_globs);
+    }
+
+    #[test]
+    fn load_errors_include_file_path_on_invalid_toml() {
+        let td = TempDir::new().unwrap();
+        let p = td.path().join("config.toml");
+        fs::write(&p, "not valid toml ][").unwrap();
+        let err = Config::load(&p).unwrap_err();
+        let rendered = format!("{err:#}");
+        assert!(
+            rendered.contains("config.toml"),
+            "error chain should mention the file path, got: {rendered}"
+        );
     }
 }
