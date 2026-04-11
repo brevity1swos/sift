@@ -3,6 +3,7 @@
 pub mod config;
 pub mod entry;
 pub mod paths;
+pub mod snapshot;
 pub mod state;
 
 pub use config::Mode;
