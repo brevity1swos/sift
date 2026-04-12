@@ -10,18 +10,22 @@ mod cmd_log;
 mod cmd_mode;
 mod cmd_revert;
 mod cmd_review;
+mod cmd_status;
 mod cmd_sweep;
 
 #[derive(Parser)]
 #[command(name = "sift", version, about = "git status for AI-generated writes")]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Show session status and pending writes (default when no command given).
+    Status,
     /// List entries in the current (or specified) session.
+    #[command(visible_alias = "ls")]
     List {
         #[arg(long)]
         pending: bool,
@@ -40,10 +44,13 @@ enum Commands {
         json: bool,
     },
     /// Show a unified diff for a specific entry.
+    #[command(visible_alias = "d")]
     Diff { id: String },
     /// Accept pending entries (by id prefix, turn-N, or "all").
+    #[command(visible_alias = "ok")]
     Accept { target: String },
     /// Revert pending entries (restores previous file state).
+    #[command(visible_alias = "undo")]
     Revert { target: String },
     /// Auto-detect and optionally revert junk entries (dry-run by default).
     Sweep {
@@ -60,33 +67,36 @@ fn main() -> Result<ExitCode> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
     match cli.command {
-        Commands::List {
+        None | Some(Commands::Status) => {
+            cmd_status::run(&cwd)?;
+        }
+        Some(Commands::List {
             pending,
             turn,
             session,
             json,
-        } => {
+        }) => {
             cmd_list::run(&cwd, pending, turn, session, json)?;
         }
-        Commands::Log { session, json } => {
+        Some(Commands::Log { session, json }) => {
             cmd_log::run(&cwd, session, json)?;
         }
-        Commands::Diff { id } => {
+        Some(Commands::Diff { id }) => {
             cmd_diff::run(&cwd, id)?;
         }
-        Commands::Accept { target } => {
+        Some(Commands::Accept { target }) => {
             cmd_accept::run(&cwd, target)?;
         }
-        Commands::Revert { target } => {
+        Some(Commands::Revert { target }) => {
             cmd_revert::run(&cwd, target)?;
         }
-        Commands::Sweep { apply } => {
+        Some(Commands::Sweep { apply }) => {
             cmd_sweep::run(&cwd, apply)?;
         }
-        Commands::Mode { mode } => {
+        Some(Commands::Mode { mode }) => {
             cmd_mode::run(&cwd, mode)?;
         }
-        Commands::Review => {
+        Some(Commands::Review) => {
             cmd_review::run(&cwd)?;
         }
     }
