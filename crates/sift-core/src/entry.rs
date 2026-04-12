@@ -32,6 +32,16 @@ pub enum Op {
     Delete,
 }
 
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::Create => f.write_str("create"),
+            Op::Modify => f.write_str("modify"),
+            Op::Delete => f.write_str("delete"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -39,6 +49,17 @@ pub enum Status {
     Accepted,
     Reverted,
     Edited,
+}
+
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Status::Pending => f.write_str("pending"),
+            Status::Accepted => f.write_str("accepted"),
+            Status::Reverted => f.write_str("reverted"),
+            Status::Edited => f.write_str("edited"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

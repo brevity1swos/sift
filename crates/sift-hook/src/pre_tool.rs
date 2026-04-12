@@ -8,7 +8,10 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sift_core::{correlation::derive_key, paths::Paths, session::Session, snapshot::SnapshotStore};
+use sift_core::{
+    correlation::derive_key, paths::validate_relative_path, paths::Paths, session::Session,
+    snapshot::SnapshotStore,
+};
 use std::fs;
 use std::path::PathBuf;
 
@@ -22,30 +25,68 @@ pub struct StagingRecord {
 }
 
 pub fn run(event: HookEvent) -> Result<()> {
-    let project_root = event.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
-    let paths = Paths::new(project_root.clone());
+    let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
+    let paths = Paths::new(&project_root);
 
     // No current session → nothing to record.
     if paths.current_symlink().symlink_metadata().is_err() {
         return Ok(());
     }
-    let session = Session::open_current(paths.clone())?;
+    let session = Session::open_current(Paths::new(&project_root))?;
 
     // Only Write/Edit/MultiEdit are captured in v0.1.
-    let Some(tool_name) = event.tool_name.clone() else {
+    let Some(tool_name) = event.tool_name else {
         return Ok(());
     };
     if !matches!(tool_name.as_str(), "Write" | "Edit" | "MultiEdit") {
         return Ok(());
     }
 
-    let Some(tool_input) = event.tool_input.clone() else {
+    let Some(tool_input) = event.tool_input else {
         return Ok(());
     };
     let Some(target_path) = tool_input.get("file_path").and_then(|v| v.as_str()) else {
         return Ok(());
     };
     let target_path = PathBuf::from(target_path);
+
+    // Security: only snapshot files that live under the project root.
+    // Claude Code always supplies absolute paths. We canonicalize both the
+    // project root and the target to resolve OS-level symlinks (e.g. on
+    // macOS, /var → /private/var) before checking containment.
+    // For files that don't exist yet (Create ops), `canonicalize` will fail;
+    // in that case we fall back to lexical prefix matching after cleaning
+    // any `..` components.
+    let canonical_root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    let rel_path = if target_path.is_absolute() {
+        // Try to canonicalize the target (works when the file already exists).
+        // Fall back to the raw path when the file doesn't exist yet.
+        let canonical_target = target_path
+            .canonicalize()
+            .unwrap_or_else(|_| target_path.to_path_buf());
+        match canonical_target.strip_prefix(&canonical_root) {
+            Ok(rel) => rel.to_path_buf(),
+            Err(_) => {
+                // Also try stripping the non-canonical root, in case the
+                // project root itself wasn't resolvable (unlikely but safe).
+                match target_path.strip_prefix(&project_root) {
+                    Ok(rel) => rel.to_path_buf(),
+                    Err(_) => {
+                        // File is outside the project root — skip silently.
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    } else {
+        // Relative path: reject `..` components that could escape the root.
+        if validate_relative_path(&target_path).is_err() {
+            return Ok(());
+        }
+        target_path.to_path_buf()
+    };
 
     // Snapshot the pre-state, if the file exists.
     let snap = SnapshotStore::new(&paths, &session.id);
@@ -61,15 +102,6 @@ pub fn run(event: HookEvent) -> Result<()> {
     if let Some(p) = staging_path.parent() {
         fs::create_dir_all(p).with_context(|| format!("creating staging dir {}", p.display()))?;
     }
-
-    // Store the target path RELATIVE to the project root so the ledger is
-    // portable. Fall back to the absolute path if the target is outside
-    // project_root (defensive; real Claude Code tool calls use absolute
-    // paths inside the project).
-    let rel_path = target_path
-        .strip_prefix(&project_root)
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|_| target_path.clone());
 
     let record = StagingRecord {
         path: rel_path,

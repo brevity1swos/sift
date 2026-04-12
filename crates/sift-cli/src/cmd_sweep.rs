@@ -10,7 +10,7 @@ use std::path::Path;
 
 pub fn run(cwd: &Path, apply: bool) -> Result<()> {
     let paths = Paths::new(cwd);
-    let session = Session::open_current(paths.clone())?;
+    let session = Session::open_current(Paths::new(cwd))?;
     let store = Store::new(&session.dir);
     let pending = store.list_pending()?;
     let candidates = detect(&pending, paths.project_root())?;
@@ -30,10 +30,12 @@ pub fn run(cwd: &Path, apply: bool) -> Result<()> {
         }
     );
     for c in &candidates {
-        let reason = match &c.reason {
-            SweepReason::ExactDuplicateOf(p) => format!("duplicate of {}", p.display()),
-            SweepReason::SlopPattern(p) => format!("slop pattern: {p}"),
-            SweepReason::OrphanMarkdown => "orphan markdown".to_string(),
+        let reason: std::borrow::Cow<str> = match &c.reason {
+            SweepReason::ExactDuplicateOf(p) => {
+                format!("duplicate of {}", p.display()).into()
+            }
+            SweepReason::SlopPattern(p) => format!("slop pattern: {p}").into(),
+            SweepReason::OrphanMarkdown => "orphan markdown".into(),
         };
         println!(
             "  {} {} — {reason}",

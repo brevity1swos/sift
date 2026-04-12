@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use crate::entry::{LedgerEntry, Op, Status};
-use crate::paths::Paths;
+use crate::paths::{validate_relative_path, Paths};
 use crate::snapshot::SnapshotStore;
 
 pub struct Store {
@@ -44,15 +44,15 @@ impl Store {
     pub fn append_pending(&self, entry: &LedgerEntry) -> Result<()> {
         fs::create_dir_all(&self.session_dir)
             .with_context(|| format!("creating session dir {}", self.session_dir.display()))?;
+        let path = self.pending_path();
         let line = serde_json::to_string(entry)?;
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(self.pending_path())
-            .with_context(|| format!("opening pending {}", self.pending_path().display()))?;
-        writeln!(f, "{line}").with_context(|| {
-            format!("writing pending line to {}", self.pending_path().display())
-        })?;
+            .open(&path)
+            .with_context(|| format!("opening pending {}", path.display()))?;
+        writeln!(f, "{line}")
+            .with_context(|| format!("writing pending line to {}", path.display()))?;
         Ok(())
     }
 
@@ -155,6 +155,12 @@ impl Store {
 
     /// Restore a reverted entry's `snapshot_before` to its path in the project root.
     /// Must be called AFTER `finalize(id, Status::Reverted)`.
+    ///
+    /// # Security
+    /// `entry.path` must be a relative path that descends into `project_root`.
+    /// An absolute path component (e.g. from a malformed ledger entry) would
+    /// cause `Path::join` to silently replace the base, creating a traversal.
+    /// We validate this before any filesystem operation.
     pub fn restore_snapshot(
         &self,
         entry: &LedgerEntry,
@@ -162,6 +168,10 @@ impl Store {
         paths: &Paths,
         session_id: &str,
     ) -> Result<()> {
+        // Guard: a poisoned ledger entry must not direct writes outside the
+        // project root. `validate_relative_path` rejects absolute paths and
+        // `..` components.
+        validate_relative_path(&entry.path)?;
         let target = project_root.join(&entry.path);
         match (&entry.op, &entry.snapshot_before) {
             (Op::Create, _) => {
@@ -211,13 +221,14 @@ impl Store {
     }
 
     fn append_ledger(&self, entry: &LedgerEntry) -> Result<()> {
+        let path = self.ledger_path();
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(self.ledger_path())
-            .with_context(|| format!("opening ledger {}", self.ledger_path().display()))?;
+            .open(&path)
+            .with_context(|| format!("opening ledger {}", path.display()))?;
         writeln!(f, "{}", serde_json::to_string(entry)?)
-            .with_context(|| format!("writing ledger line to {}", self.ledger_path().display()))?;
+            .with_context(|| format!("writing ledger line to {}", path.display()))?;
         Ok(())
     }
 }

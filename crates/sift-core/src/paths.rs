@@ -3,6 +3,32 @@
 use anyhow::{ensure, Result};
 use std::path::{Path, PathBuf};
 
+/// Validate that `path` is safe to join onto a project root:
+/// - must be relative (not absolute), and
+/// - must not contain `..` components.
+///
+/// Both `restore_snapshot` (store.rs) and `pre_tool` (sift-hook) use this
+/// guard to prevent a poisoned ledger or hook payload from directing writes
+/// to locations outside the project root.
+pub fn validate_relative_path(path: &std::path::Path) -> anyhow::Result<()> {
+    if path.is_absolute() {
+        anyhow::bail!(
+            "path must be relative, got absolute: {}",
+            path.display()
+        );
+    }
+    if path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        anyhow::bail!(
+            "path must not contain '..': {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 /// Paths for a sift-managed project root.
 #[derive(Debug, Clone)]
 pub struct Paths {

@@ -40,11 +40,13 @@ impl Default for Config {
 
 impl Config {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("reading config {}", path.display()))?;
+        let text = match fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => {
+                return Err(e).with_context(|| format!("reading config {}", path.display()))
+            }
+        };
         toml::from_str(&text).with_context(|| format!("parsing config {}", path.display()))
     }
 

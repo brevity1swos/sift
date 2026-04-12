@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub fn run(cwd: &Path, target: String) -> Result<()> {
     let paths = Paths::new(cwd);
-    let session = Session::open_current(paths.clone())?;
+    let session = Session::open_current(Paths::new(cwd))?;
     let store = Store::new(&session.dir);
     let pending = store.list_pending()?;
     let ids = crate::cmd_accept::resolve_target_ids(&pending, &target);

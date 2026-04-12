@@ -22,13 +22,13 @@ use crate::payload::HookEvent;
 use crate::pre_tool::StagingRecord;
 
 pub fn run(event: HookEvent) -> Result<()> {
-    let project_root = event.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
-    let paths = Paths::new(project_root.clone());
+    let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
+    let paths = Paths::new(&project_root);
 
     if paths.current_symlink().symlink_metadata().is_err() {
         return Ok(());
     }
-    let session = Session::open_current(paths.clone())?;
+    let session = Session::open_current(Paths::new(&project_root))?;
 
     // Only Write/Edit/MultiEdit are captured.
     let tool = match event.tool_name.as_deref() {
@@ -94,11 +94,11 @@ pub fn run(event: HookEvent) -> Result<()> {
         id: new_entry_id(),
         turn,
         tool,
-        path: staging.path.clone(),
+        path: staging.path,
         op,
         rationale: String::new(),
         diff_stats,
-        snapshot_before: staging.pre_hash.clone(),
+        snapshot_before: staging.pre_hash,
         snapshot_after: post_hash,
         status: Status::Pending,
         timestamp: Utc::now(),

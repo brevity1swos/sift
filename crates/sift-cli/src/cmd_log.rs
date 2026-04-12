@@ -11,7 +11,7 @@ pub fn run(cwd: &Path, session: Option<String>, json: bool) -> Result<()> {
     } else {
         for e in &ledger {
             println!(
-                "{} {} {:?} {} +{} -{}",
+                "{} {} [{}] {} +{} -{}",
                 &e.id[..8.min(e.id.len())],
                 e.timestamp,
                 e.status,

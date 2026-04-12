@@ -41,12 +41,17 @@ pub fn read_from_stdin() -> Result<HookEvent> {
 }
 
 /// Parse a hook event from a JSON string. Exposed for tests and for
-/// `read_from_stdin` to share the double-parse logic.
+/// `read_from_stdin` to share the single-parse logic.
+///
+/// We parse the input string once into a `serde_json::Value`, then
+/// deserialize the typed fields from that value. This avoids running the
+/// JSON parser twice on potentially large payloads.
 pub fn parse(input: &str) -> Result<HookEvent> {
-    let mut event: HookEvent = serde_json::from_str(input)
-        .with_context(|| format!("parsing hook event (typed): {input}"))?;
-    event.raw = serde_json::from_str(input)
-        .with_context(|| format!("parsing hook event (raw): {input}"))?;
+    let raw: Value = serde_json::from_str(input)
+        .with_context(|| format!("parsing hook event: {input}"))?;
+    let mut event: HookEvent = serde_json::from_value(raw.clone())
+        .with_context(|| format!("deserializing hook event fields: {input}"))?;
+    event.raw = raw;
     Ok(event)
 }
 

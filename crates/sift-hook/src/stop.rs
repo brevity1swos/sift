@@ -19,8 +19,8 @@ pub fn run(event: HookEvent) -> Result<()> {
     let session = Session::open_current(paths)?;
     session.close()?;
     let store = Store::new(&session.dir);
-    let pending = store.list_pending().unwrap_or_default().len();
-    let ledger = store.list_ledger().unwrap_or_default();
+    let pending = store.list_pending()?.len();
+    let ledger = store.list_ledger()?;
     let accepted = ledger
         .iter()
         .filter(|e| e.status == Status::Accepted)

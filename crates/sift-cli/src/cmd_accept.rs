@@ -23,7 +23,7 @@ pub(crate) fn resolve_target_ids(entries: &[LedgerEntry], target: &str) -> Vec<S
     match target {
         "all" => entries.iter().map(|e| e.id.clone()).collect(),
         t if t.starts_with("turn-") => {
-            if let Ok(n) = t.strip_prefix("turn-").unwrap().parse::<u32>() {
+            if let Ok(n) = t["turn-".len()..].parse::<u32>() {
                 entries
                     .iter()
                     .filter(|e| e.turn == n)

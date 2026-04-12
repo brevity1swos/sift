@@ -21,13 +21,13 @@ use crate::payload::HookEvent;
 
 pub fn run(event: HookEvent) -> Result<ExitCode> {
     let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
-    let paths = Paths::new(project_root);
+    let paths = Paths::new(&project_root);
 
     // No current session → nothing to gate. Let the prompt through.
     if paths.current_symlink().symlink_metadata().is_err() {
         return Ok(ExitCode::from(0));
     }
-    let session = Session::open_current(paths.clone())?;
+    let session = Session::open_current(Paths::new(&project_root))?;
     let config = Config::load(&paths.config_file())?;
     let store = Store::new(&session.dir);
     let pending = store.list_pending()?;

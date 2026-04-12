@@ -15,8 +15,7 @@ pub fn run(
         store.list_pending()?
     } else {
         let mut p = store.list_pending()?;
-        let mut l = store.list_ledger()?;
-        p.append(&mut l);
+        p.extend(store.list_ledger()?);
         p
     };
     if let Some(t) = turn {
@@ -28,7 +27,7 @@ pub fn run(
     } else {
         for e in &entries {
             println!(
-                "{} turn{} [{:?}] {:?} {} +{} -{}",
+                "{} turn{} [{}] {} {} +{} -{}",
                 &e.id[..8.min(e.id.len())],
                 e.turn,
                 e.status,

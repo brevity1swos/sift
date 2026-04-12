@@ -27,27 +27,36 @@ pub struct SweepCandidate {
     pub reason: SweepReason,
 }
 
-pub fn slop_globs() -> GlobSet {
-    let patterns = [
-        "**/*_v[0-9]*",
-        "**/*_new",
-        "**/*_new.*",
-        "**/*_old",
-        "**/*_old.*",
-        "**/*_final",
-        "**/*_final.*",
-        "**/*_backup",
-        "**/*_backup.*",
-        "**/*_copy",
-        "**/*_copy.*",
-        "**/scratch_*",
-        "**/tmp_*",
-    ];
-    let mut b = GlobSetBuilder::new();
-    for p in patterns {
-        b.add(Glob::new(p).expect("slop glob pattern is valid"));
-    }
-    b.build().expect("slop glob set builds")
+/// Return a reference to the shared slop-pattern `GlobSet`.
+///
+/// Built once at first call via `OnceLock`; subsequent calls return the
+/// cached value. All patterns are compile-time constants so the `expect`
+/// calls are infallible in practice.
+pub fn slop_globs() -> &'static GlobSet {
+    use std::sync::OnceLock;
+    static GLOBS: OnceLock<GlobSet> = OnceLock::new();
+    GLOBS.get_or_init(|| {
+        let patterns = [
+            "**/*_v[0-9]*",
+            "**/*_new",
+            "**/*_new.*",
+            "**/*_old",
+            "**/*_old.*",
+            "**/*_final",
+            "**/*_final.*",
+            "**/*_backup",
+            "**/*_backup.*",
+            "**/*_copy",
+            "**/*_copy.*",
+            "**/scratch_*",
+            "**/tmp_*",
+        ];
+        let mut b = GlobSetBuilder::new();
+        for p in patterns {
+            b.add(Glob::new(p).expect("slop glob pattern is valid"));
+        }
+        b.build().expect("slop glob set builds")
+    })
 }
 
 /// Scan pending entries and return sweep candidates.
@@ -60,12 +69,22 @@ pub fn slop_globs() -> GlobSet {
 pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepCandidate>> {
     let mut out = Vec::new();
     let globs = slop_globs();
+    detect_exact_dups(pending, globs, &mut out);
+    detect_slop(pending, globs, &mut out);
+    detect_orphan_markdown(pending, project_root, &mut out)?;
+    Ok(out)
+}
 
-    // Rule 1: exact dup by snapshot_after hash. For each hash, keep the
-    // earliest non-slop path as canonical and flag the rest. If the earliest
-    // path is itself a slop match and a later one is not, promote the later
-    // one to canonical so the recommendation ("delete the dup") points at
-    // the scratch file, not the stable name.
+/// Rule 1: flag entries whose `snapshot_after` hash matches an earlier entry.
+///
+/// Keeps the earliest *non-slop* path as the canonical copy. If the first-seen
+/// path is itself a slop match and a later one is not, the direction flips so
+/// the slop file is flagged as the duplicate.
+fn detect_exact_dups(
+    pending: &[LedgerEntry],
+    globs: &GlobSet,
+    out: &mut Vec<SweepCandidate>,
+) {
     let mut seen_hashes: HashMap<String, PathBuf> = HashMap::new();
     for e in pending {
         if e.op == Op::Delete {
@@ -77,15 +96,14 @@ pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepC
                 seen_hashes.insert(h.clone(), e.path.clone());
             }
             Some(first) if first == e.path => {
-                // Same path written twice — not a duplicate in the "two files
-                // with identical content" sense. Skip.
+                // Same path written twice — not a dup in the "two files with
+                // identical content" sense. Skip.
             }
             Some(first) => {
                 let first_is_slop = globs.is_match(&first);
                 let curr_is_slop = globs.is_match(&e.path);
                 if first_is_slop && !curr_is_slop {
-                    // Promote the current (cleaner) name to canonical. Flag
-                    // `first` as the duplicate instead.
+                    // Promote the current (cleaner) name to canonical.
                     let flagged_id = pending
                         .iter()
                         .find(|p| p.path == first && p.snapshot_after.as_ref() == Some(h))
@@ -109,8 +127,11 @@ pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepC
             }
         }
     }
+}
 
-    // Rule 2: slop-pattern globs. Skip already-flagged entries and Op::Delete.
+/// Rule 2: flag entries whose paths match the slop-pattern glob set.
+/// Skips entries already flagged by rule 1 and `Op::Delete` entries.
+fn detect_slop(pending: &[LedgerEntry], globs: &GlobSet, out: &mut Vec<SweepCandidate>) {
     for e in pending {
         if e.op == Op::Delete {
             continue;
@@ -131,14 +152,20 @@ pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepC
             });
         }
     }
+}
 
-    // Rule 3: orphan markdown. Only considers Create entries with .md extension.
-    let md_created: Vec<&LedgerEntry> = pending
+/// Rule 3: flag `Op::Create` `.md` entries not referenced by any project file.
+/// Skips entries already flagged by rules 1 or 2.
+fn detect_orphan_markdown(
+    pending: &[LedgerEntry],
+    project_root: &Path,
+    out: &mut Vec<SweepCandidate>,
+) -> Result<()> {
+    for md in pending
         .iter()
         .filter(|e| e.op == Op::Create)
         .filter(|e| e.path.extension().and_then(|s| s.to_str()) == Some("md"))
-        .collect();
-    for md in md_created {
+    {
         if out.iter().any(|c| c.entry_id == md.id) {
             continue;
         }
@@ -154,8 +181,7 @@ pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepC
             });
         }
     }
-
-    Ok(out)
+    Ok(())
 }
 
 /// Lexical-only path cleanup: strip `Component::CurDir` (`.`) components so
