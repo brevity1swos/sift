@@ -9,7 +9,13 @@ pub fn run(cwd: &Path, target: String) -> Result<()> {
     let pending = store.list_pending()?;
     let ids = resolve_target_ids(&pending, &target);
     if ids.is_empty() {
-        println!("sift: no pending entries match '{target}'");
+        match target.as_str() {
+            "all" => println!("sift: nothing to accept"),
+            t if parse_turn(t).is_some() => {
+                println!("sift: no pending entries on turn {}", parse_turn(t).unwrap());
+            }
+            _ => println!("sift: no pending entries match '{target}'"),
+        }
         return Ok(());
     }
     for id in &ids {
@@ -20,7 +26,7 @@ pub fn run(cwd: &Path, target: String) -> Result<()> {
 }
 
 /// Parse a turn number from "turn-1", "turn1", "turn-12", "turn12", etc.
-fn parse_turn(t: &str) -> Option<u32> {
+pub(crate) fn parse_turn(t: &str) -> Option<u32> {
     t.strip_prefix("turn-")
         .or_else(|| t.strip_prefix("turn"))
         .and_then(|n| n.parse::<u32>().ok())

@@ -27,10 +27,13 @@ pub fn run(cwd: &Path, target: String) -> Result<()> {
     }
 
     if pending_ids.is_empty() && ledger_ids.is_empty() {
-        if is_bulk {
-            println!("sift: no pending entries match '{target}'");
-        } else {
-            println!("sift: no pending or accepted entries match '{target}'");
+        match target.as_str() {
+            "all" => println!("sift: nothing to revert"),
+            t if is_bulk => {
+                let n = crate::cmd_accept::parse_turn(t).unwrap_or(0);
+                println!("sift: no pending entries on turn {n}");
+            }
+            _ => println!("sift: no pending or accepted entries match '{target}'"),
         }
         return Ok(());
     }
