@@ -8,7 +8,7 @@ pub fn run(cwd: &Path, target: String) -> Result<()> {
     let store = Store::new(&session.dir);
 
     let pending = store.list_pending()?;
-    let is_bulk = target == "all" || target.starts_with("turn-");
+    let is_bulk = crate::cmd_accept::is_bulk_target(&target);
 
     // Bulk targets (all, turn-N) only touch pending — never silently revert
     // accepted entries. Use a specific ID prefix to revert an accepted entry.

@@ -19,19 +19,27 @@ pub fn run(cwd: &Path, target: String) -> Result<()> {
     Ok(())
 }
 
+/// Parse a turn number from "turn-1", "turn1", "turn-12", "turn12", etc.
+fn parse_turn(t: &str) -> Option<u32> {
+    t.strip_prefix("turn-")
+        .or_else(|| t.strip_prefix("turn"))
+        .and_then(|n| n.parse::<u32>().ok())
+}
+
+pub(crate) fn is_bulk_target(target: &str) -> bool {
+    target == "all" || parse_turn(target).is_some()
+}
+
 pub(crate) fn resolve_target_ids(entries: &[LedgerEntry], target: &str) -> Vec<String> {
     match target {
         "all" => entries.iter().map(|e| e.id.clone()).collect(),
-        t if t.starts_with("turn-") => {
-            if let Ok(n) = t["turn-".len()..].parse::<u32>() {
-                entries
-                    .iter()
-                    .filter(|e| e.turn == n)
-                    .map(|e| e.id.clone())
-                    .collect()
-            } else {
-                vec![]
-            }
+        t if parse_turn(t).is_some() => {
+            let n = parse_turn(t).unwrap();
+            entries
+                .iter()
+                .filter(|e| e.turn == n)
+                .map(|e| e.id.clone())
+                .collect()
         }
         prefix => entries
             .iter()
