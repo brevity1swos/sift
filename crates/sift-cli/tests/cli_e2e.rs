@@ -67,3 +67,40 @@ fn list_after_write_via_hook() {
         .success()
         .stdout(predicates::str::contains("x.txt"));
 }
+
+#[test]
+fn accept_all_moves_pending_to_ledger() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    write_via_hook(&td, "y.txt", b"a");
+    Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["accept", "all"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("accepted 1"));
+    // Pending should now be empty.
+    Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--json"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("[]"));
+}
+
+#[test]
+fn revert_all_on_create_deletes_file() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    let target = write_via_hook(&td, "z.txt", b"z");
+    assert!(target.exists());
+    Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["revert", "all"])
+        .assert()
+        .success();
+    assert!(!target.exists());
+}

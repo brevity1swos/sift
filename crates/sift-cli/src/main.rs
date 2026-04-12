@@ -3,8 +3,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod cmd_accept;
+mod cmd_diff;
 mod cmd_list;
 mod cmd_log;
+mod cmd_revert;
 
 #[derive(Parser)]
 #[command(name = "sift", version, about = "git status for AI-generated writes")]
@@ -33,6 +36,12 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Show a unified diff for a specific entry.
+    Diff { id: String },
+    /// Accept pending entries (by id prefix, turn-N, or "all").
+    Accept { target: String },
+    /// Revert pending entries (restores previous file state).
+    Revert { target: String },
 }
 
 fn main() -> Result<ExitCode> {
@@ -44,6 +53,15 @@ fn main() -> Result<ExitCode> {
         }
         Commands::Log { session, json } => {
             cmd_log::run(&cwd, session, json)?;
+        }
+        Commands::Diff { id } => {
+            cmd_diff::run(&cwd, id)?;
+        }
+        Commands::Accept { target } => {
+            cmd_accept::run(&cwd, target)?;
+        }
+        Commands::Revert { target } => {
+            cmd_revert::run(&cwd, target)?;
         }
     }
     Ok(ExitCode::from(0))
