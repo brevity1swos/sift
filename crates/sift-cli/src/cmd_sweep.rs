@@ -23,7 +23,11 @@ pub fn run(cwd: &Path, apply: bool) -> Result<()> {
     println!(
         "sift: {} sweep candidate(s){}:",
         candidates.len(),
-        if apply { "" } else { " (dry run — pass --apply to revert)" }
+        if apply {
+            ""
+        } else {
+            " (dry run — pass --apply to revert)"
+        }
     );
     for c in &candidates {
         let reason = match &c.reason {

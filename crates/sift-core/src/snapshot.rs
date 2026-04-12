@@ -46,8 +46,7 @@ impl<'a> SnapshotStore<'a> {
     /// Read a blob by hash; verifies the hash matches the content and quarantines on mismatch.
     pub fn get(&self, hex: &str) -> Result<Vec<u8>> {
         let path = self.paths.snapshot_path(self.session_id, hex)?;
-        let content = fs::read(&path)
-            .with_context(|| format!("reading blob {hex} at {path:?}"))?;
+        let content = fs::read(&path).with_context(|| format!("reading blob {hex} at {path:?}"))?;
         let actual = sha1_hex(&content);
         if actual != hex {
             self.quarantine(&path, hex, &actual)?;
@@ -152,8 +151,14 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let name = entries[0].as_ref().unwrap().file_name();
         let name = name.to_string_lossy();
-        assert!(name.starts_with(&h), "quarantine filename must start with expected hash");
-        assert!(name.ends_with(".bad"), "quarantine filename must end with .bad");
+        assert!(
+            name.starts_with(&h),
+            "quarantine filename must start with expected hash"
+        );
+        assert!(
+            name.ends_with(".bad"),
+            "quarantine filename must end with .bad"
+        );
     }
 
     #[test]
@@ -178,7 +183,10 @@ mod tests {
 
         let bad_dir = paths.session_dir(&sid).join("snapshots").join(".bad");
         let count = bad_dir.read_dir().unwrap().count();
-        assert_eq!(count, 2, "expected two distinct quarantine files, got {count}");
+        assert_eq!(
+            count, 2,
+            "expected two distinct quarantine files, got {count}"
+        );
     }
 
     #[test]

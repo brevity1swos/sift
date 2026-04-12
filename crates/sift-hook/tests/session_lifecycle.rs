@@ -23,11 +23,17 @@ fn session_start_creates_dir_and_symlink() {
     let sessions_dir = td.path().join(".sift/sessions");
     assert!(sessions_dir.exists(), "{sessions_dir:?} should exist");
     let first = sessions_dir.read_dir().unwrap().next();
-    assert!(first.is_some(), "at least one session dir should be present");
+    assert!(
+        first.is_some(),
+        "at least one session dir should be present"
+    );
     // The current symlink should point to the new session dir.
     let current = td.path().join(".sift/current");
     let meta = current.symlink_metadata().unwrap();
-    assert!(meta.file_type().is_symlink(), "{current:?} should be a symlink");
+    assert!(
+        meta.file_type().is_symlink(),
+        "{current:?} should be a symlink"
+    );
 }
 
 #[test]
@@ -51,7 +57,10 @@ fn stop_writes_ended_at_and_summary() {
         .assert()
         .success();
     let stderr = String::from_utf8(out.get_output().stderr.clone()).unwrap();
-    assert!(stderr.starts_with("sift:"), "expected summary line, got: {stderr}");
+    assert!(
+        stderr.starts_with("sift:"),
+        "expected summary line, got: {stderr}"
+    );
 
     // meta.json should now have `ended_at` set.
     let current = td.path().join(".sift/current");
@@ -80,12 +89,14 @@ fn stop_on_no_session_is_a_noop() {
 fn user_prompt_loose_mode_always_allows() {
     let td = TempDir::new().unwrap();
     let event = serde_json::json!({ "cwd": td.path() });
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("session-start")
         .write_stdin(event.to_string())
         .assert()
         .success();
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("user-prompt")
         .write_stdin(event.to_string())
         .assert()
@@ -98,7 +109,8 @@ fn user_prompt_strict_mode_blocks_when_pending() {
     let event = serde_json::json!({ "cwd": td.path() });
 
     // Start a session.
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("session-start")
         .write_stdin(event.to_string())
         .assert()
@@ -123,14 +135,18 @@ fn user_prompt_strict_mode_blocks_when_pending() {
     writeln!(pending, "{sample}").unwrap();
 
     // user-prompt should now exit 2 with the block message on stderr.
-    let out = Command::cargo_bin("sift-hook").unwrap()
+    let out = Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("user-prompt")
         .write_stdin(event.to_string())
         .assert()
         .failure()
         .code(2);
     let stderr = String::from_utf8(out.get_output().stderr.clone()).unwrap();
-    assert!(stderr.contains("pending"), "expected block message, got: {stderr}");
+    assert!(
+        stderr.contains("pending"),
+        "expected block message, got: {stderr}"
+    );
 }
 
 #[test]
@@ -139,7 +155,8 @@ fn user_prompt_strict_mode_allows_when_pending_empty() {
     let event = serde_json::json!({ "cwd": td.path() });
 
     // Start session.
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("session-start")
         .write_stdin(event.to_string())
         .assert()
@@ -152,7 +169,8 @@ fn user_prompt_strict_mode_allows_when_pending_empty() {
     )
     .unwrap();
 
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("user-prompt")
         .write_stdin(event.to_string())
         .assert()
@@ -164,18 +182,21 @@ fn user_prompt_bumps_turn_counter() {
     let td = TempDir::new().unwrap();
     let event = serde_json::json!({ "cwd": td.path() });
 
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("session-start")
         .write_stdin(event.to_string())
         .assert()
         .success();
 
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("user-prompt")
         .write_stdin(event.to_string())
         .assert()
         .success();
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("user-prompt")
         .write_stdin(event.to_string())
         .assert()
@@ -185,8 +206,7 @@ fn user_prompt_bumps_turn_counter() {
     let current = td.path().join(".sift/current");
     let session_dir = fs::read_link(&current).unwrap();
     let state: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(session_dir.join("state.json")).unwrap())
-            .unwrap();
+        serde_json::from_str(&fs::read_to_string(session_dir.join("state.json")).unwrap()).unwrap();
     assert_eq!(state["turn"], 2, "expected turn=2, got {}", state["turn"]);
 }
 
@@ -195,7 +215,8 @@ fn user_prompt_no_session_allows() {
     // user-prompt before any session exists should just pass (no gate).
     let td = TempDir::new().unwrap();
     let event = serde_json::json!({ "cwd": td.path() });
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("user-prompt")
         .write_stdin(event.to_string())
         .assert()
@@ -209,7 +230,8 @@ fn pre_post_creates_pending_entry() {
 
     // Start the session.
     let init_event = serde_json::json!({ "cwd": td.path() });
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("session-start")
         .write_stdin(init_event.to_string())
         .assert()
@@ -223,7 +245,8 @@ fn pre_post_creates_pending_entry() {
         "tool_input": { "file_path": target.to_str().unwrap() },
         "tool_use_id": "toolu_1"
     });
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("pre-tool")
         .write_stdin(pre_event.to_string())
         .assert()
@@ -234,7 +257,8 @@ fn pre_post_creates_pending_entry() {
 
     // Post-tool: same event → same correlation key → staging record found.
     let post_event = pre_event.clone();
-    Command::cargo_bin("sift-hook").unwrap()
+    Command::cargo_bin("sift-hook")
+        .unwrap()
         .arg("post-tool")
         .write_stdin(post_event.to_string())
         .assert()
@@ -244,12 +268,24 @@ fn pre_post_creates_pending_entry() {
     let current = td.path().join(".sift/current");
     let session_dir = fs::read_link(&current).unwrap();
     let pending = fs::read_to_string(session_dir.join("pending.jsonl")).unwrap();
-    assert!(pending.contains("\"op\":\"create\""), "expected Create op, got: {pending}");
-    assert!(pending.contains("\"tool\":\"Write\""), "expected Tool::Write, got: {pending}");
-    assert!(pending.contains("foo.txt"), "expected path foo.txt, got: {pending}");
+    assert!(
+        pending.contains("\"op\":\"create\""),
+        "expected Create op, got: {pending}"
+    );
+    assert!(
+        pending.contains("\"tool\":\"Write\""),
+        "expected Tool::Write, got: {pending}"
+    );
+    assert!(
+        pending.contains("foo.txt"),
+        "expected path foo.txt, got: {pending}"
+    );
 
     // Staging record should have been cleaned up.
     let staging_dir = session_dir.join("staging");
     let staging_count = staging_dir.read_dir().map(|d| d.count()).unwrap_or(0);
-    assert_eq!(staging_count, 0, "staging dir should be empty after post-tool");
+    assert_eq!(
+        staging_count, 0,
+        "staging dir should be empty after post-tool"
+    );
 }

@@ -74,7 +74,10 @@ fn full_turn_with_two_writes_then_accept_all() {
         .assert()
         .success();
     let stderr = String::from_utf8(out.get_output().stderr.clone()).unwrap();
-    assert!(stderr.contains("accepted"), "summary should mention accepted, got: {stderr}");
+    assert!(
+        stderr.contains("accepted"),
+        "summary should mention accepted, got: {stderr}"
+    );
 
     // Files still present after accept.
     assert!(f1.exists());

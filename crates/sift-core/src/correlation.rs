@@ -16,7 +16,10 @@ pub fn derive_key(payload: &Value) -> String {
             return format!("id:{id}");
         }
     }
-    let tool_name = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+    let tool_name = payload
+        .get("tool_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let tool_input = payload.get("tool_input").cloned().unwrap_or(Value::Null);
     let canonical = canonical_json(&tool_input);
     let mut h = Sha1::new();

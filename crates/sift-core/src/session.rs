@@ -63,8 +63,7 @@ impl Session {
         // Ensure the parent (.sift/) exists before symlinking.
         let link = paths.current_symlink();
         if let Some(parent) = link.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("creating {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
         }
         // Atomically replace the `current` symlink via tmp-symlink + rename, so
         // a crash between old-remove and new-create can never leave the link
@@ -136,8 +135,12 @@ impl Session {
         Ok(())
     }
 
-    pub fn state_path(&self) -> PathBuf { self.dir.join("state.json") }
-    pub fn meta_path(&self) -> PathBuf { self.dir.join("meta.json") }
+    pub fn state_path(&self) -> PathBuf {
+        self.dir.join("state.json")
+    }
+    pub fn meta_path(&self) -> PathBuf {
+        self.dir.join("meta.json")
+    }
 }
 
 /// Serialize `value` to JSON and write it to `path` atomically via tmp+rename.
@@ -150,8 +153,7 @@ fn write_json_atomic<T: Serialize>(path: &std::path::Path, value: &T) -> Result<
     let tmp = path.with_extension("json.tmp");
     let text = serde_json::to_string_pretty(value)
         .with_context(|| format!("serializing {}", path.display()))?;
-    fs::write(&tmp, text)
-        .with_context(|| format!("writing tmp {}", tmp.display()))?;
+    fs::write(&tmp, text).with_context(|| format!("writing tmp {}", tmp.display()))?;
     fs::rename(&tmp, path)
         .with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()))?;
     Ok(())
@@ -213,7 +215,10 @@ mod tests {
         fs::create_dir_all(paths.session_dir(&next_base)).unwrap();
         let second = Session::create(paths).unwrap();
         assert_ne!(first.id, second.id, "two sessions must have distinct ids");
-        assert!(second.id != next_base, "probe loop should have skipped the pre-existing dir");
+        assert!(
+            second.id != next_base,
+            "probe loop should have skipped the pre-existing dir"
+        );
     }
 
     #[test]

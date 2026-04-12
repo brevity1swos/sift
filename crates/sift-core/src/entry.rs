@@ -49,7 +49,7 @@ pub struct DiffStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
-    pub id: String,              // ULID string
+    pub id: String, // ULID string
     pub turn: u32,
     pub tool: Tool,
     pub path: PathBuf,
@@ -84,7 +84,10 @@ mod tests {
             path: PathBuf::from("src/lib.rs"),
             op: Op::Modify,
             rationale: String::new(),
-            diff_stats: DiffStats { added: 4, removed: 2 },
+            diff_stats: DiffStats {
+                added: 4,
+                removed: 2,
+            },
             snapshot_before: Some("abcd".repeat(10)),
             snapshot_after: Some("ef01".repeat(10)),
             status: Status::Pending,

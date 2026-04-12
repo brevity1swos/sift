@@ -186,10 +186,7 @@ fn is_referenced(project_root: &Path, exclude: &Path, basename: &str) -> Result<
     let needle = basename.as_bytes();
     for entry in WalkDir::new(project_root).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
-        !matches!(
-            name.as_ref(),
-            "target" | ".git" | ".sift" | "node_modules"
-        )
+        !matches!(name.as_ref(), "target" | ".git" | ".sift" | "node_modules")
     }) {
         let entry = match entry {
             Ok(e) => e,
@@ -226,7 +223,10 @@ mod tests {
             path: PathBuf::from(path),
             op,
             rationale: String::new(),
-            diff_stats: DiffStats { added: 0, removed: 0 },
+            diff_stats: DiffStats {
+                added: 0,
+                removed: 0,
+            },
             snapshot_before: None,
             snapshot_after: hash_after.map(|s| s.into()),
             status: Status::Pending,
@@ -243,7 +243,9 @@ mod tests {
         ];
         let c = detect(&pending, td.path()).unwrap();
         // foo_v2.py is both a duplicate AND slop-glob; duplicate rule wins (first).
-        assert!(c.iter().any(|x| matches!(x.reason, SweepReason::ExactDuplicateOf(_))));
+        assert!(c
+            .iter()
+            .any(|x| matches!(x.reason, SweepReason::ExactDuplicateOf(_))));
     }
 
     #[test]
@@ -256,7 +258,9 @@ mod tests {
         ];
         let c = detect(&pending, td.path()).unwrap();
         assert_eq!(c.len(), 3);
-        assert!(c.iter().all(|x| matches!(x.reason, SweepReason::SlopPattern(_))));
+        assert!(c
+            .iter()
+            .all(|x| matches!(x.reason, SweepReason::SlopPattern(_))));
     }
 
     #[test]

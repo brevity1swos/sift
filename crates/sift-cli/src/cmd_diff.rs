@@ -1,10 +1,6 @@
 use anyhow::{anyhow, Result};
 use sift_core::{
-    diff::unified,
-    paths::Paths,
-    session::Session,
-    snapshot::SnapshotStore,
-    store::Store,
+    diff::unified, paths::Paths, session::Session, snapshot::SnapshotStore, store::Store,
 };
 use std::path::Path;
 

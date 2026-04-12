@@ -28,11 +28,17 @@ pub struct ReadStats {
 
 impl Store {
     pub fn new(session_dir: impl Into<PathBuf>) -> Self {
-        Self { session_dir: session_dir.into() }
+        Self {
+            session_dir: session_dir.into(),
+        }
     }
 
-    pub fn pending_path(&self) -> PathBuf { self.session_dir.join("pending.jsonl") }
-    pub fn ledger_path(&self) -> PathBuf { self.session_dir.join("ledger.jsonl") }
+    pub fn pending_path(&self) -> PathBuf {
+        self.session_dir.join("pending.jsonl")
+    }
+    pub fn ledger_path(&self) -> PathBuf {
+        self.session_dir.join("ledger.jsonl")
+    }
 
     /// Append a pending entry to `pending.jsonl`.
     pub fn append_pending(&self, entry: &LedgerEntry) -> Result<()> {
@@ -44,8 +50,9 @@ impl Store {
             .append(true)
             .open(self.pending_path())
             .with_context(|| format!("opening pending {}", self.pending_path().display()))?;
-        writeln!(f, "{line}")
-            .with_context(|| format!("writing pending line to {}", self.pending_path().display()))?;
+        writeln!(f, "{line}").with_context(|| {
+            format!("writing pending line to {}", self.pending_path().display())
+        })?;
         Ok(())
     }
 
@@ -78,7 +85,10 @@ impl Store {
         let f = match File::open(path) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(ReadStats { entries: vec![], skipped: 0 });
+                return Ok(ReadStats {
+                    entries: vec![],
+                    skipped: 0,
+                });
             }
             Err(e) => {
                 return Err(e).with_context(|| format!("opening {}", path.display()));
@@ -109,7 +119,11 @@ impl Store {
 
     /// Filter pending entries by status (convenience).
     pub fn pending_with_status(&self, status: Status) -> Result<Vec<LedgerEntry>> {
-        Ok(self.list_pending()?.into_iter().filter(|e| e.status == status).collect())
+        Ok(self
+            .list_pending()?
+            .into_iter()
+            .filter(|e| e.status == status)
+            .collect())
     }
 
     /// Move an entry from pending.jsonl to ledger.jsonl with the given final status.
@@ -183,15 +197,16 @@ impl Store {
     fn rewrite_pending(&self, entries: &[LedgerEntry]) -> Result<()> {
         let tmp = self.session_dir.join("pending.jsonl.tmp");
         {
-            let mut f = File::create(&tmp)
-                .with_context(|| format!("creating tmp {}", tmp.display()))?;
+            let mut f =
+                File::create(&tmp).with_context(|| format!("creating tmp {}", tmp.display()))?;
             for e in entries {
                 writeln!(f, "{}", serde_json::to_string(e)?)
                     .with_context(|| format!("writing tmp {}", tmp.display()))?;
             }
         }
-        fs::rename(&tmp, self.pending_path())
-            .with_context(|| format!("renaming tmp -> pending {}", self.pending_path().display()))?;
+        fs::rename(&tmp, self.pending_path()).with_context(|| {
+            format!("renaming tmp -> pending {}", self.pending_path().display())
+        })?;
         Ok(())
     }
 
@@ -222,7 +237,10 @@ mod tests {
             path: PathBuf::from("foo.txt"),
             op: Op::Create,
             rationale: String::new(),
-            diff_stats: DiffStats { added: 1, removed: 0 },
+            diff_stats: DiffStats {
+                added: 1,
+                removed: 0,
+            },
             snapshot_before: None,
             snapshot_after: Some("a".repeat(40)),
             status: Status::Pending,
@@ -248,7 +266,10 @@ mod tests {
         let store = Store::new(td.path());
         store.append_pending(&make_entry("01", 1)).unwrap();
         // Write a bad line directly.
-        let mut f = OpenOptions::new().append(true).open(store.pending_path()).unwrap();
+        let mut f = OpenOptions::new()
+            .append(true)
+            .open(store.pending_path())
+            .unwrap();
         writeln!(f, "not valid json").unwrap();
         store.append_pending(&make_entry("02", 2)).unwrap();
         let stats = store.list_pending_with_stats().unwrap();
@@ -318,10 +339,15 @@ mod tests {
     fn finalize_unknown_id_errors_include_id() {
         let td = TempDir::new().unwrap();
         let store = Store::new(td.path());
-        let err = store.finalize("nonexistent-xyz", Status::Accepted).unwrap_err();
+        let err = store
+            .finalize("nonexistent-xyz", Status::Accepted)
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("not in pending"), "got: {msg}");
-        assert!(msg.contains("nonexistent-xyz"), "error should name the id: {msg}");
+        assert!(
+            msg.contains("nonexistent-xyz"),
+            "error should name the id: {msg}"
+        );
     }
 
     fn setup_revert_scenario(td: &TempDir) -> (Paths, String, PathBuf) {
@@ -347,7 +373,9 @@ mod tests {
         entry.path = PathBuf::from("new.txt");
         entry.snapshot_before = None;
 
-        store.restore_snapshot(&entry, &project_root, &paths, &session_id).unwrap();
+        store
+            .restore_snapshot(&entry, &project_root, &paths, &session_id)
+            .unwrap();
         assert!(!target.exists());
     }
 
@@ -372,7 +400,9 @@ mod tests {
         entry.path = PathBuf::from("src/lib.rs");
         entry.snapshot_before = Some(before_hash);
 
-        store.restore_snapshot(&entry, &project_root, &paths, &session_id).unwrap();
+        store
+            .restore_snapshot(&entry, &project_root, &paths, &session_id)
+            .unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original contents");
     }
 
@@ -397,7 +427,9 @@ mod tests {
         entry.snapshot_before = Some(before_hash);
         entry.snapshot_after = None;
 
-        store.restore_snapshot(&entry, &project_root, &paths, &session_id).unwrap();
+        store
+            .restore_snapshot(&entry, &project_root, &paths, &session_id)
+            .unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"the file that was deleted");
     }
 

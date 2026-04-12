@@ -11,25 +11,39 @@ pub struct Paths {
 
 impl Paths {
     pub fn new(project_root: impl Into<PathBuf>) -> Self {
-        Self { root: project_root.into() }
+        Self {
+            root: project_root.into(),
+        }
     }
 
-    pub fn project_root(&self) -> &Path { &self.root }
+    pub fn project_root(&self) -> &Path {
+        &self.root
+    }
 
     /// `.sift/`
-    pub fn sift_dir(&self) -> PathBuf { self.root.join(".sift") }
+    pub fn sift_dir(&self) -> PathBuf {
+        self.root.join(".sift")
+    }
 
     /// `.sift/config.toml`
-    pub fn config_file(&self) -> PathBuf { self.sift_dir().join("config.toml") }
+    pub fn config_file(&self) -> PathBuf {
+        self.sift_dir().join("config.toml")
+    }
 
     /// `.sift/sessions/`
-    pub fn sessions_dir(&self) -> PathBuf { self.sift_dir().join("sessions") }
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.sift_dir().join("sessions")
+    }
 
     /// `.sift/current` — symlink to the active session directory
-    pub fn current_symlink(&self) -> PathBuf { self.sift_dir().join("current") }
+    pub fn current_symlink(&self) -> PathBuf {
+        self.sift_dir().join("current")
+    }
 
     /// `.sift/sessions/<id>/`
-    pub fn session_dir(&self, id: &str) -> PathBuf { self.sessions_dir().join(id) }
+    pub fn session_dir(&self, id: &str) -> PathBuf {
+        self.sessions_dir().join(id)
+    }
 
     /// Two-char sharded blob path: `<session_dir>/snapshots/ab/cd1234...`
     ///
@@ -47,12 +61,18 @@ impl Paths {
             "sha1 hex must be ASCII, got non-ASCII bytes"
         );
         let (prefix, rest) = sha1_hex.split_at(2);
-        Ok(self.session_dir(session_id).join("snapshots").join(prefix).join(rest))
+        Ok(self
+            .session_dir(session_id)
+            .join("snapshots")
+            .join(prefix)
+            .join(rest))
     }
 
     /// Staging record path for in-flight pre/post correlation.
     pub fn staging_path(&self, session_id: &str, correlation_key: &str) -> PathBuf {
-        self.session_dir(session_id).join("staging").join(format!("{correlation_key}.json"))
+        self.session_dir(session_id)
+            .join("staging")
+            .join(format!("{correlation_key}.json"))
     }
 }
 

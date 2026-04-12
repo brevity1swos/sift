@@ -116,5 +116,8 @@ fn mode_strict_persists_in_config() {
         .assert()
         .success();
     let content = fs::read_to_string(td.path().join(".sift/config.toml")).unwrap();
-    assert!(content.contains("strict"), "config should contain 'strict', got: {content}");
+    assert!(
+        content.contains("strict"),
+        "config should contain 'strict', got: {content}"
+    );
 }

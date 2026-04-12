@@ -67,11 +67,20 @@ mod tests {
         let e = parse(raw).unwrap();
         assert_eq!(e.tool_name.as_deref(), Some("Write"));
         assert_eq!(e.tool_use_id.as_deref(), Some("toolu_abc"));
-        assert_eq!(e.cwd.as_deref(), Some(std::path::Path::new("/home/me/project")));
+        assert_eq!(
+            e.cwd.as_deref(),
+            Some(std::path::Path::new("/home/me/project"))
+        );
         // raw must still carry tool_use_id / tool_name / tool_input for
         // correlation::derive_key to find them.
-        assert_eq!(e.raw.get("tool_use_id").and_then(|v| v.as_str()), Some("toolu_abc"));
-        assert_eq!(e.raw.get("tool_name").and_then(|v| v.as_str()), Some("Write"));
+        assert_eq!(
+            e.raw.get("tool_use_id").and_then(|v| v.as_str()),
+            Some("toolu_abc")
+        );
+        assert_eq!(
+            e.raw.get("tool_name").and_then(|v| v.as_str()),
+            Some("Write")
+        );
         assert!(e.raw.get("tool_input").is_some());
     }
 
@@ -88,7 +97,10 @@ mod tests {
         assert!(e.tool_use_id.is_none());
         assert_eq!(e.hook_event_name.as_deref(), Some("UserPromptSubmit"));
         // Unknown fields like "prompt" survive in raw.
-        assert_eq!(e.raw.get("prompt").and_then(|v| v.as_str()), Some("do the thing"));
+        assert_eq!(
+            e.raw.get("prompt").and_then(|v| v.as_str()),
+            Some("do the thing")
+        );
     }
 
     #[test]

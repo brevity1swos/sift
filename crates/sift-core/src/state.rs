@@ -17,7 +17,11 @@ pub struct SessionState {
 
 impl Default for SessionState {
     fn default() -> Self {
-        Self { turn: 0, mode: Mode::Loose, last_hook_ts: None }
+        Self {
+            turn: 0,
+            mode: Mode::Loose,
+            last_hook_ts: None,
+        }
     }
 }
 
@@ -28,8 +32,7 @@ impl SessionState {
         }
         let text = fs::read_to_string(path)
             .with_context(|| format!("reading state {}", path.display()))?;
-        serde_json::from_str(&text)
-            .with_context(|| format!("parsing state {}", path.display()))
+        serde_json::from_str(&text).with_context(|| format!("parsing state {}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -43,8 +46,7 @@ impl SessionState {
         let tmp = path.with_extension("json.tmp");
         fs::write(&tmp, serde_json::to_string_pretty(self)?)
             .with_context(|| format!("writing state tmp {}", tmp.display()))?;
-        fs::rename(&tmp, path)
-            .with_context(|| format!("renaming state to {}", path.display()))?;
+        fs::rename(&tmp, path).with_context(|| format!("renaming state to {}", path.display()))?;
         Ok(())
     }
 

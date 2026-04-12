@@ -8,12 +8,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sift_core::{
-    correlation::derive_key,
-    paths::Paths,
-    session::Session,
-    snapshot::SnapshotStore,
-};
+use sift_core::{correlation::derive_key, paths::Paths, session::Session, snapshot::SnapshotStore};
 use std::fs;
 use std::path::PathBuf;
 
@@ -64,8 +59,7 @@ pub fn run(event: HookEvent) -> Result<()> {
     let key = derive_key(&event.raw);
     let staging_path = paths.staging_path(&session.id, &key);
     if let Some(p) = staging_path.parent() {
-        fs::create_dir_all(p)
-            .with_context(|| format!("creating staging dir {}", p.display()))?;
+        fs::create_dir_all(p).with_context(|| format!("creating staging dir {}", p.display()))?;
     }
 
     // Store the target path RELATIVE to the project root so the ledger is

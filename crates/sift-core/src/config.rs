@@ -22,12 +22,19 @@ pub struct Config {
 }
 
 fn default_ignore_globs() -> Vec<String> {
-    vec!["**/.git/**".into(), "**/target/**".into(), "**/node_modules/**".into()]
+    vec![
+        "**/.git/**".into(),
+        "**/target/**".into(),
+        "**/node_modules/**".into(),
+    ]
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { mode: Mode::default(), ignore_globs: default_ignore_globs() }
+        Self {
+            mode: Mode::default(),
+            ignore_globs: default_ignore_globs(),
+        }
     }
 }
 
@@ -38,8 +45,7 @@ impl Config {
         }
         let text = fs::read_to_string(path)
             .with_context(|| format!("reading config {}", path.display()))?;
-        toml::from_str(&text)
-            .with_context(|| format!("parsing config {}", path.display()))
+        toml::from_str(&text).with_context(|| format!("parsing config {}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -48,8 +54,7 @@ impl Config {
                 .with_context(|| format!("creating config parent {}", parent.display()))?;
         }
         let text = toml::to_string_pretty(self)?;
-        fs::write(path, text)
-            .with_context(|| format!("writing config {}", path.display()))?;
+        fs::write(path, text).with_context(|| format!("writing config {}", path.display()))?;
         Ok(())
     }
 }
@@ -77,7 +82,10 @@ mod tests {
     fn save_then_load_roundtrip() {
         let td = TempDir::new().unwrap();
         let p = td.path().join("nested").join("config.toml");
-        let c = Config { mode: Mode::Strict, ..Config::default() };
+        let c = Config {
+            mode: Mode::Strict,
+            ..Config::default()
+        };
         c.save(&p).unwrap();
         let back = Config::load(&p).unwrap();
         assert_eq!(back.mode, Mode::Strict);

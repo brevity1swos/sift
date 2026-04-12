@@ -8,8 +8,8 @@ mod cmd_diff;
 mod cmd_list;
 mod cmd_log;
 mod cmd_mode;
-mod cmd_review;
 mod cmd_revert;
+mod cmd_review;
 mod cmd_sweep;
 
 #[derive(Parser)]
@@ -60,7 +60,12 @@ fn main() -> Result<ExitCode> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
     match cli.command {
-        Commands::List { pending, turn, session, json } => {
+        Commands::List {
+            pending,
+            turn,
+            session,
+            json,
+        } => {
             cmd_list::run(&cwd, pending, turn, session, json)?;
         }
         Commands::Log { session, json } => {

@@ -33,7 +33,7 @@ mod tests {
         let before = "a\nb\nc\n";
         let after = "a\nB\nc\nd\n";
         let s = stats(before, after);
-        assert_eq!(s.added, 2);   // "B" and "d"
+        assert_eq!(s.added, 2); // "B" and "d"
         assert_eq!(s.removed, 1); // "b"
     }
 

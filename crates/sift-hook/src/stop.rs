@@ -21,8 +21,14 @@ pub fn run(event: HookEvent) -> Result<()> {
     let store = Store::new(&session.dir);
     let pending = store.list_pending().unwrap_or_default().len();
     let ledger = store.list_ledger().unwrap_or_default();
-    let accepted = ledger.iter().filter(|e| e.status == Status::Accepted).count();
-    let reverted = ledger.iter().filter(|e| e.status == Status::Reverted).count();
+    let accepted = ledger
+        .iter()
+        .filter(|e| e.status == Status::Accepted)
+        .count();
+    let reverted = ledger
+        .iter()
+        .filter(|e| e.status == Status::Reverted)
+        .count();
     let total = ledger.len() + pending;
     eprintln!(
         "sift: {} writes · {} accepted · {} reverted · {} pending · {}",
