@@ -2,6 +2,8 @@ use anyhow::{bail, Result};
 use std::process::ExitCode;
 
 mod payload;
+mod post_tool;
+mod pre_tool;
 mod session_start;
 mod stop;
 mod user_prompt;
@@ -19,6 +21,14 @@ fn main() -> Result<ExitCode> {
             Ok(ExitCode::from(0))
         }
         "user-prompt" => user_prompt::run(event),
+        "pre-tool" => {
+            pre_tool::run(event)?;
+            Ok(ExitCode::from(0))
+        }
+        "post-tool" => {
+            post_tool::run(event)?;
+            Ok(ExitCode::from(0))
+        }
         other => bail!("unknown subcommand: {other}"),
     }
 }

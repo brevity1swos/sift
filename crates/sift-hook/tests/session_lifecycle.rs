@@ -201,3 +201,55 @@ fn user_prompt_no_session_allows() {
         .assert()
         .success();
 }
+
+#[test]
+fn pre_post_creates_pending_entry() {
+    let td = TempDir::new().unwrap();
+    let target = td.path().join("foo.txt");
+
+    // Start the session.
+    let init_event = serde_json::json!({ "cwd": td.path() });
+    Command::cargo_bin("sift-hook").unwrap()
+        .arg("session-start")
+        .write_stdin(init_event.to_string())
+        .assert()
+        .success();
+
+    // Pre-tool: file doesn't exist yet (pre_hash will be None).
+    let pre_event = serde_json::json!({
+        "cwd": td.path(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Write",
+        "tool_input": { "file_path": target.to_str().unwrap() },
+        "tool_use_id": "toolu_1"
+    });
+    Command::cargo_bin("sift-hook").unwrap()
+        .arg("pre-tool")
+        .write_stdin(pre_event.to_string())
+        .assert()
+        .success();
+
+    // Simulate Claude writing the file between pre and post.
+    fs::write(&target, b"hello").unwrap();
+
+    // Post-tool: same event → same correlation key → staging record found.
+    let post_event = pre_event.clone();
+    Command::cargo_bin("sift-hook").unwrap()
+        .arg("post-tool")
+        .write_stdin(post_event.to_string())
+        .assert()
+        .success();
+
+    // pending.jsonl should now contain one Create entry for foo.txt.
+    let current = td.path().join(".sift/current");
+    let session_dir = fs::read_link(&current).unwrap();
+    let pending = fs::read_to_string(session_dir.join("pending.jsonl")).unwrap();
+    assert!(pending.contains("\"op\":\"create\""), "expected Create op, got: {pending}");
+    assert!(pending.contains("\"tool\":\"Write\""), "expected Tool::Write, got: {pending}");
+    assert!(pending.contains("foo.txt"), "expected path foo.txt, got: {pending}");
+
+    // Staging record should have been cleaned up.
+    let staging_dir = session_dir.join("staging");
+    let staging_count = staging_dir.read_dir().map(|d| d.count()).unwrap_or(0);
+    assert_eq!(staging_count, 0, "staging dir should be empty after post-tool");
+}
