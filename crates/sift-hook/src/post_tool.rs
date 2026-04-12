@@ -73,13 +73,15 @@ pub fn run(event: HookEvent) -> Result<()> {
 
     // Compute diff stats from the before/after text (lossy UTF-8 is fine for
     // stats; binary diffs will report 0 added/0 removed because from_lines
-    // sees no line structure).
+    // sees no line structure). Propagate snapshot corruption errors rather
+    // than silently defaulting to empty bytes — a bad diff is worse than a
+    // visible hook failure the user can investigate.
     let before_text = match &staging.pre_hash {
-        Some(h) => String::from_utf8_lossy(&snap.get(h).unwrap_or_default()).into_owned(),
+        Some(h) => String::from_utf8_lossy(&snap.get(h)?).into_owned(),
         None => String::new(),
     };
     let after_text = match &post_hash {
-        Some(h) => String::from_utf8_lossy(&snap.get(h).unwrap_or_default()).into_owned(),
+        Some(h) => String::from_utf8_lossy(&snap.get(h)?).into_owned(),
         None => String::new(),
     };
     let diff_stats = stats(&before_text, &after_text);
