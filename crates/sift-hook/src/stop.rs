@@ -9,10 +9,14 @@ use crate::payload::HookEvent;
 pub fn run(event: HookEvent) -> Result<()> {
     let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
     let paths = Paths::new(project_root);
-    let session = match Session::open_current(paths) {
-        Ok(s) => s,
-        Err(_) => return Ok(()), // no active session, nothing to close
-    };
+    // Distinguish "no active session" (common: Claude started outside a
+    // sift-enabled project) from "corrupted session state" (unusual but
+    // worth surfacing). Only suppress the error when the symlink is
+    // genuinely absent; propagate all other failures.
+    if paths.current_symlink().symlink_metadata().is_err() {
+        return Ok(());
+    }
+    let session = Session::open_current(paths)?;
     session.close()?;
     let store = Store::new(&session.dir);
     let pending = store.list_pending().unwrap_or_default().len();
