@@ -1,6 +1,7 @@
 //! sift-core: session lifecycle, ledger store, snapshots, diff, sweep.
 
 pub mod config;
+pub mod diff;
 pub mod entry;
 pub mod paths;
 pub mod session;
