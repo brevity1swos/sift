@@ -50,4 +50,33 @@ mod tests {
         assert!(u.contains("-b"));
         assert!(u.contains("+c"));
     }
+
+    #[test]
+    fn stats_handles_empty_inputs() {
+        // Both empty: no change.
+        let s = stats("", "");
+        assert_eq!(s.added, 0);
+        assert_eq!(s.removed, 0);
+        // Empty before, content after: everything added.
+        let s = stats("", "one\ntwo\n");
+        assert_eq!(s.added, 2);
+        assert_eq!(s.removed, 0);
+        // Content before, empty after: everything removed.
+        let s = stats("one\ntwo\n", "");
+        assert_eq!(s.added, 0);
+        assert_eq!(s.removed, 2);
+    }
+
+    #[test]
+    fn stats_handles_input_without_trailing_newline() {
+        // Should not panic and should count the change sensibly.
+        let s = stats("a", "b");
+        assert_eq!(s.added, 1);
+        assert_eq!(s.removed, 1);
+    }
+
+    #[test]
+    fn unified_empty_strings_returns_empty_output() {
+        assert_eq!(unified("", "", 3), "");
+    }
 }
