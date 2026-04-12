@@ -104,3 +104,17 @@ fn revert_all_on_create_deletes_file() {
         .success();
     assert!(!target.exists());
 }
+
+#[test]
+fn mode_strict_persists_in_config() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["mode", "strict"])
+        .assert()
+        .success();
+    let content = fs::read_to_string(td.path().join(".sift/config.toml")).unwrap();
+    assert!(content.contains("strict"), "config should contain 'strict', got: {content}");
+}

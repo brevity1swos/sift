@@ -7,7 +7,10 @@ mod cmd_accept;
 mod cmd_diff;
 mod cmd_list;
 mod cmd_log;
+mod cmd_mode;
+mod cmd_review;
 mod cmd_revert;
+mod cmd_sweep;
 
 #[derive(Parser)]
 #[command(name = "sift", version, about = "git status for AI-generated writes")]
@@ -42,6 +45,15 @@ enum Commands {
     Accept { target: String },
     /// Revert pending entries (restores previous file state).
     Revert { target: String },
+    /// Auto-detect and optionally revert junk entries (dry-run by default).
+    Sweep {
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Set the session mode (strict or loose).
+    Mode { mode: String },
+    /// Launch the TUI sidecar for interactive review.
+    Review,
 }
 
 fn main() -> Result<ExitCode> {
@@ -62,6 +74,15 @@ fn main() -> Result<ExitCode> {
         }
         Commands::Revert { target } => {
             cmd_revert::run(&cwd, target)?;
+        }
+        Commands::Sweep { apply } => {
+            cmd_sweep::run(&cwd, apply)?;
+        }
+        Commands::Mode { mode } => {
+            cmd_mode::run(&cwd, mode)?;
+        }
+        Commands::Review => {
+            cmd_review::run(&cwd)?;
         }
     }
     Ok(ExitCode::from(0))
