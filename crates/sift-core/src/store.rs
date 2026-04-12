@@ -204,6 +204,36 @@ impl Store {
         Ok(())
     }
 
+    /// Update an entry's status in ledger.jsonl (for reverting accepted entries).
+    /// Returns the entry with its new status, or Err if not found.
+    pub fn update_ledger_status(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
+        let mut ledger = self.list_ledger()?;
+        let entry = ledger
+            .iter_mut()
+            .find(|e| e.id.starts_with(id))
+            .ok_or_else(|| anyhow::anyhow!("entry {id} not in ledger"))?;
+        entry.status = new_status;
+        let result = entry.clone();
+        self.rewrite_ledger(&ledger)?;
+        Ok(result)
+    }
+
+    fn rewrite_ledger(&self, entries: &[LedgerEntry]) -> Result<()> {
+        let tmp = self.session_dir.join("ledger.jsonl.tmp");
+        {
+            let mut f =
+                File::create(&tmp).with_context(|| format!("creating tmp {}", tmp.display()))?;
+            for e in entries {
+                writeln!(f, "{}", serde_json::to_string(e)?)
+                    .with_context(|| format!("writing tmp {}", tmp.display()))?;
+            }
+        }
+        fs::rename(&tmp, self.ledger_path()).with_context(|| {
+            format!("renaming tmp -> ledger {}", self.ledger_path().display())
+        })?;
+        Ok(())
+    }
+
     fn rewrite_pending(&self, entries: &[LedgerEntry]) -> Result<()> {
         let tmp = self.session_dir.join("pending.jsonl.tmp");
         {
