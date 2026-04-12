@@ -114,16 +114,28 @@ impl Store {
 
     /// Move an entry from pending.jsonl to ledger.jsonl with the given final status.
     /// Returns the entry as written, or Err if the id is not in pending.
+    ///
+    /// **Concurrency invariant:** only one writer per session dir at a time.
+    /// Two concurrent `finalize` calls would both write `pending.jsonl.tmp` and
+    /// race on rename, silently dropping one caller's mutation.
     pub fn finalize(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
         let pending = self.list_pending()?;
         let (keep, take): (Vec<_>, Vec<_>) = pending.into_iter().partition(|e| e.id != id);
-        let mut entry = take.into_iter().next()
+        debug_assert!(
+            take.len() <= 1,
+            "duplicate entry id {id} in pending — ledger invariant violated",
+        );
+        let mut entry = take
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow::anyhow!("entry {id} not in pending"))?;
         entry.status = new_status;
-        // Rewrite pending.jsonl with the remaining entries.
-        self.rewrite_pending(&keep)?;
-        // Append the finalized entry to ledger.jsonl.
+        // Append to ledger FIRST so a subsequent rewrite_pending failure leaves
+        // the entry duplicated (present in both files) rather than lost. A
+        // future fsck/dedup pass can resolve duplicates; a vanished entry
+        // cannot be recovered.
         self.append_ledger(&entry)?;
+        self.rewrite_pending(&keep)?;
         Ok(entry)
     }
 
@@ -156,7 +168,10 @@ impl Store {
                     .with_context(|| format!("writing restored {}", target.display()))?;
             }
             (Op::Delete, None) => {
-                // Delete with no before snapshot is nonsense; log and skip.
+                // Silently skip — a Delete with no before snapshot is nonsense
+                // (the revert has nothing to restore). This should never happen
+                // for entries produced by post_tool; if it does, it is safe to
+                // ignore.
             }
             (Op::Modify, None) => {
                 anyhow::bail!("Modify entry {} has no snapshot_before", entry.id);
@@ -300,25 +315,31 @@ mod tests {
     }
 
     #[test]
-    fn finalize_unknown_id_errors() {
+    fn finalize_unknown_id_errors_include_id() {
         let td = TempDir::new().unwrap();
         let store = Store::new(td.path());
-        let err = store.finalize("nonexistent", Status::Accepted).unwrap_err();
-        assert!(err.to_string().contains("not in pending"));
+        let err = store.finalize("nonexistent-xyz", Status::Accepted).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not in pending"), "got: {msg}");
+        assert!(msg.contains("nonexistent-xyz"), "error should name the id: {msg}");
+    }
+
+    fn setup_revert_scenario(td: &TempDir) -> (Paths, String, PathBuf) {
+        let project_root = td.path().to_path_buf();
+        let paths = Paths::new(&project_root);
+        let session_id = "sess-1".to_string();
+        let session_dir = paths.session_dir(&session_id);
+        fs::create_dir_all(session_dir.join("snapshots")).unwrap();
+        (paths, session_id, project_root)
     }
 
     #[test]
     fn restore_snapshot_deletes_file_on_create_revert() {
-        use crate::paths::Paths;
         let td = TempDir::new().unwrap();
-        let project_root = td.path();
-        let paths = Paths::new(project_root);
-        let session_id = "sess-1";
-        let session_dir = paths.session_dir(session_id);
-        fs::create_dir_all(session_dir.join("snapshots")).unwrap();
+        let (paths, session_id, project_root) = setup_revert_scenario(&td);
+        let session_dir = paths.session_dir(&session_id);
         let store = Store::new(&session_dir);
 
-        // Create a file Claude "created"
         let target = project_root.join("new.txt");
         fs::write(&target, b"content").unwrap();
         let mut entry = make_entry("01", 1);
@@ -326,7 +347,89 @@ mod tests {
         entry.path = PathBuf::from("new.txt");
         entry.snapshot_before = None;
 
-        store.restore_snapshot(&entry, project_root, &paths, session_id).unwrap();
+        store.restore_snapshot(&entry, &project_root, &paths, &session_id).unwrap();
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn restore_snapshot_rewrites_file_on_modify_revert() {
+        let td = TempDir::new().unwrap();
+        let (paths, session_id, project_root) = setup_revert_scenario(&td);
+        let session_dir = paths.session_dir(&session_id);
+        let store = Store::new(&session_dir);
+
+        // Stash the pre-modify content in the snapshot store.
+        let snap_store = SnapshotStore::new(&paths, &session_id);
+        let before_hash = snap_store.put(b"original contents").unwrap();
+
+        // Claude modified the file to something else.
+        let target = project_root.join("src/lib.rs");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, b"claude's rewrite").unwrap();
+
+        let mut entry = make_entry("m1", 1);
+        entry.op = Op::Modify;
+        entry.path = PathBuf::from("src/lib.rs");
+        entry.snapshot_before = Some(before_hash);
+
+        store.restore_snapshot(&entry, &project_root, &paths, &session_id).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original contents");
+    }
+
+    #[test]
+    fn restore_snapshot_recreates_file_on_delete_revert() {
+        let td = TempDir::new().unwrap();
+        let (paths, session_id, project_root) = setup_revert_scenario(&td);
+        let session_dir = paths.session_dir(&session_id);
+        let store = Store::new(&session_dir);
+
+        // Pre-delete content stashed in snapshots.
+        let snap_store = SnapshotStore::new(&paths, &session_id);
+        let before_hash = snap_store.put(b"the file that was deleted").unwrap();
+
+        // File does not currently exist on disk (Claude deleted it).
+        let target = project_root.join("removed.txt");
+        assert!(!target.exists());
+
+        let mut entry = make_entry("d1", 1);
+        entry.op = Op::Delete;
+        entry.path = PathBuf::from("removed.txt");
+        entry.snapshot_before = Some(before_hash);
+        entry.snapshot_after = None;
+
+        store.restore_snapshot(&entry, &project_root, &paths, &session_id).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"the file that was deleted");
+    }
+
+    #[test]
+    fn restore_snapshot_errors_on_modify_with_no_before() {
+        let td = TempDir::new().unwrap();
+        let (paths, session_id, project_root) = setup_revert_scenario(&td);
+        let session_dir = paths.session_dir(&session_id);
+        let store = Store::new(&session_dir);
+
+        let mut entry = make_entry("bad", 1);
+        entry.op = Op::Modify;
+        entry.snapshot_before = None;
+
+        let err = store
+            .restore_snapshot(&entry, &project_root, &paths, &session_id)
+            .unwrap_err();
+        assert!(err.to_string().contains("has no snapshot_before"));
+    }
+
+    #[test]
+    fn finalize_preserves_order_of_remaining_entries() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.append_pending(&make_entry("02", 2)).unwrap();
+        store.append_pending(&make_entry("03", 3)).unwrap();
+        // Finalize the middle one.
+        store.finalize("02", Status::Accepted).unwrap();
+        let remaining = store.list_pending().unwrap();
+        assert_eq!(remaining.len(), 2);
+        assert_eq!(remaining[0].id, "01");
+        assert_eq!(remaining[1].id, "03");
     }
 }
