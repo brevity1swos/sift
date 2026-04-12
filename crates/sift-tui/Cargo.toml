@@ -10,3 +10,6 @@ ratatui.workspace = true
 crossterm.workspace = true
 notify.workspace = true
 sift-core = { path = "../sift-core" }
+
+[dev-dependencies]
+tempfile.workspace = true
