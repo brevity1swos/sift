@@ -5,7 +5,9 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use crate::entry::{LedgerEntry, Status};
+use crate::entry::{LedgerEntry, Op, Status};
+use crate::paths::Paths;
+use crate::snapshot::SnapshotStore;
 
 pub struct Store {
     session_dir: PathBuf,
@@ -109,6 +111,85 @@ impl Store {
     pub fn pending_with_status(&self, status: Status) -> Result<Vec<LedgerEntry>> {
         Ok(self.list_pending()?.into_iter().filter(|e| e.status == status).collect())
     }
+
+    /// Move an entry from pending.jsonl to ledger.jsonl with the given final status.
+    /// Returns the entry as written, or Err if the id is not in pending.
+    pub fn finalize(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
+        let pending = self.list_pending()?;
+        let (keep, take): (Vec<_>, Vec<_>) = pending.into_iter().partition(|e| e.id != id);
+        let mut entry = take.into_iter().next()
+            .ok_or_else(|| anyhow::anyhow!("entry {id} not in pending"))?;
+        entry.status = new_status;
+        // Rewrite pending.jsonl with the remaining entries.
+        self.rewrite_pending(&keep)?;
+        // Append the finalized entry to ledger.jsonl.
+        self.append_ledger(&entry)?;
+        Ok(entry)
+    }
+
+    /// Restore a reverted entry's `snapshot_before` to its path in the project root.
+    /// Must be called AFTER `finalize(id, Status::Reverted)`.
+    pub fn restore_snapshot(
+        &self,
+        entry: &LedgerEntry,
+        project_root: &Path,
+        paths: &Paths,
+        session_id: &str,
+    ) -> Result<()> {
+        let target = project_root.join(&entry.path);
+        match (&entry.op, &entry.snapshot_before) {
+            (Op::Create, _) => {
+                // Revert of a Create deletes the file.
+                if target.exists() {
+                    fs::remove_file(&target)
+                        .with_context(|| format!("removing {}", target.display()))?;
+                }
+            }
+            (_, Some(before)) => {
+                let snap_store = SnapshotStore::new(paths, session_id);
+                let bytes = snap_store.get(before)?;
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("creating parent {}", parent.display()))?;
+                }
+                fs::write(&target, bytes)
+                    .with_context(|| format!("writing restored {}", target.display()))?;
+            }
+            (Op::Delete, None) => {
+                // Delete with no before snapshot is nonsense; log and skip.
+            }
+            (Op::Modify, None) => {
+                anyhow::bail!("Modify entry {} has no snapshot_before", entry.id);
+            }
+        }
+        Ok(())
+    }
+
+    fn rewrite_pending(&self, entries: &[LedgerEntry]) -> Result<()> {
+        let tmp = self.session_dir.join("pending.jsonl.tmp");
+        {
+            let mut f = File::create(&tmp)
+                .with_context(|| format!("creating tmp {}", tmp.display()))?;
+            for e in entries {
+                writeln!(f, "{}", serde_json::to_string(e)?)
+                    .with_context(|| format!("writing tmp {}", tmp.display()))?;
+            }
+        }
+        fs::rename(&tmp, self.pending_path())
+            .with_context(|| format!("renaming tmp -> pending {}", self.pending_path().display()))?;
+        Ok(())
+    }
+
+    fn append_ledger(&self, entry: &LedgerEntry) -> Result<()> {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.ledger_path())
+            .with_context(|| format!("opening ledger {}", self.ledger_path().display()))?;
+        writeln!(f, "{}", serde_json::to_string(entry)?)
+            .with_context(|| format!("writing ledger line to {}", self.ledger_path().display()))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -200,5 +281,52 @@ mod tests {
         let accepted_only = store.pending_with_status(Status::Accepted).unwrap();
         assert_eq!(accepted_only.len(), 1);
         assert_eq!(accepted_only[0].id, "a1");
+    }
+
+    #[test]
+    fn finalize_moves_entry_from_pending_to_ledger() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.append_pending(&make_entry("02", 2)).unwrap();
+        let finalized = store.finalize("01", Status::Accepted).unwrap();
+        assert_eq!(finalized.status, Status::Accepted);
+        let remaining = store.list_pending().unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, "02");
+        let ledger = store.list_ledger().unwrap();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].id, "01");
+    }
+
+    #[test]
+    fn finalize_unknown_id_errors() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        let err = store.finalize("nonexistent", Status::Accepted).unwrap_err();
+        assert!(err.to_string().contains("not in pending"));
+    }
+
+    #[test]
+    fn restore_snapshot_deletes_file_on_create_revert() {
+        use crate::paths::Paths;
+        let td = TempDir::new().unwrap();
+        let project_root = td.path();
+        let paths = Paths::new(project_root);
+        let session_id = "sess-1";
+        let session_dir = paths.session_dir(session_id);
+        fs::create_dir_all(session_dir.join("snapshots")).unwrap();
+        let store = Store::new(&session_dir);
+
+        // Create a file Claude "created"
+        let target = project_root.join("new.txt");
+        fs::write(&target, b"content").unwrap();
+        let mut entry = make_entry("01", 1);
+        entry.op = Op::Create;
+        entry.path = PathBuf::from("new.txt");
+        entry.snapshot_before = None;
+
+        store.restore_snapshot(&entry, project_root, &paths, session_id).unwrap();
+        assert!(!target.exists());
     }
 }
