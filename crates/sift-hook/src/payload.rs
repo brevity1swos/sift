@@ -18,6 +18,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)] // Fields consumed by later hook subcommand tasks.
 pub struct HookEvent {
     pub session_id: Option<String>,
     pub transcript_path: Option<PathBuf>,
