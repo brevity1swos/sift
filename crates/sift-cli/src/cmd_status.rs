@@ -56,8 +56,10 @@ pub fn run(cwd: &Path) -> Result<()> {
             println!();
             println!("Pending ({}):", pending.len());
             for e in &pending {
+                let short_id = &e.id[..8.min(e.id.len())];
                 println!(
-                    "  {:?}  {}   +{} -{}",
+                    "  {}  {:?}  {}   +{} -{}",
+                    short_id,
                     e.op,
                     e.path.display(),
                     e.diff_stats.added,
@@ -84,10 +86,11 @@ pub fn run(cwd: &Path) -> Result<()> {
     }
 
     if !pending.is_empty() {
+        let example_id = &pending[0].id[..8.min(pending[0].id.len())];
         println!();
-        println!("  sift ok           accept all pending");
-        println!("  sift undo         revert all pending");
-        println!("  sift d <id>       show diff for an entry");
+        println!("  sift ok all       accept all pending");
+        println!("  sift undo all     revert all pending");
+        println!("  sift d {example_id}    show diff (use id from list above)");
         println!("  sift ls           list pending entries");
     }
 
