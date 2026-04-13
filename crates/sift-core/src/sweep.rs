@@ -16,6 +16,10 @@ use crate::entry::{LedgerEntry, Op};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SweepReason {
     ExactDuplicateOf(PathBuf),
+    FuzzyDuplicate {
+        similar_to: PathBuf,
+        similarity: u8, // 0-100 percent
+    },
     SlopPattern(String),
     OrphanMarkdown,
 }
@@ -70,9 +74,60 @@ pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepC
     let mut out = Vec::new();
     let globs = slop_globs();
     detect_exact_dups(pending, globs, &mut out);
+    detect_fuzzy_dups(pending, project_root, &mut out);
     detect_slop(pending, globs, &mut out);
     detect_orphan_markdown(pending, project_root, &mut out)?;
     Ok(out)
+}
+
+/// Rule 1b: fuzzy duplicate detection. For pending entries not already flagged,
+/// compare file contents pairwise. If two files are >80% similar (by line),
+/// flag the later one as a near-duplicate.
+fn detect_fuzzy_dups(
+    pending: &[LedgerEntry],
+    project_root: &Path,
+    out: &mut Vec<SweepCandidate>,
+) {
+    use similar::TextDiff;
+
+    // Collect non-flagged, non-delete entries with readable content.
+    let candidates: Vec<(usize, &LedgerEntry, String)> = pending
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.op != Op::Delete)
+        .filter(|(_, e)| !out.iter().any(|c| c.entry_id == e.id))
+        .filter_map(|(i, e)| {
+            let path = project_root.join(&e.path);
+            std::fs::read_to_string(&path).ok().map(|content| (i, e, content))
+        })
+        .collect();
+
+    // Pairwise comparison — O(n²) but n is typically < 50 per session.
+    for i in 0..candidates.len() {
+        if out.iter().any(|c| c.entry_id == candidates[i].1.id) {
+            continue;
+        }
+        for j in (i + 1)..candidates.len() {
+            if out.iter().any(|c| c.entry_id == candidates[j].1.id) {
+                continue;
+            }
+            // Skip if same hash (already caught by exact dup rule).
+            if candidates[i].1.snapshot_after == candidates[j].1.snapshot_after {
+                continue;
+            }
+            let ratio = TextDiff::from_lines(&candidates[i].2, &candidates[j].2).ratio();
+            if ratio >= 0.8 {
+                out.push(SweepCandidate {
+                    entry_id: candidates[j].1.id.clone(),
+                    path: candidates[j].1.path.clone(),
+                    reason: SweepReason::FuzzyDuplicate {
+                        similar_to: candidates[i].1.path.clone(),
+                        similarity: (ratio * 100.0) as u8,
+                    },
+                });
+            }
+        }
+    }
 }
 
 /// Rule 1: flag entries whose `snapshot_after` hash matches an earlier entry.

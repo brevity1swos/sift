@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 mod cmd_accept;
 mod cmd_diff;
+mod cmd_history;
 mod cmd_init;
 mod cmd_list;
 mod cmd_log;
@@ -62,6 +63,13 @@ enum Commands {
     Mode { mode: String },
     /// Launch the TUI sidecar for interactive review.
     Review,
+    /// List all past sessions with summary stats.
+    History {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open sift review in a new tmux pane (requires tmux).
+    Watch,
     /// Wire sift hooks into the current project (or globally).
     Init {
         /// Write hooks to user-level config instead of project-level.
@@ -108,6 +116,26 @@ fn main() -> Result<ExitCode> {
         }
         Some(Commands::Review) => {
             cmd_review::run(&cwd)?;
+        }
+        Some(Commands::History { json }) => {
+            cmd_history::run(&cwd, json)?;
+        }
+        Some(Commands::Watch) => {
+            // Launch `sift review` in a new tmux pane.
+            let status = std::process::Command::new("tmux")
+                .args(["split-window", "-h", "sift review"])
+                .status();
+            match status {
+                Ok(s) if s.success() => {
+                    println!("sift: opened review sidecar in tmux pane");
+                }
+                Ok(_) => {
+                    eprintln!("sift: tmux split-window failed — are you inside a tmux session?");
+                }
+                Err(_) => {
+                    eprintln!("sift: tmux not found — run `sift review` manually in another terminal");
+                }
+            }
         }
         Some(Commands::Init { global, tool }) => {
             cmd_init::run(&cwd, global, &tool)?;

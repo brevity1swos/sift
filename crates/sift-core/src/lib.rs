@@ -4,6 +4,7 @@ pub mod config;
 pub mod correlation;
 pub mod diff;
 pub mod entry;
+pub mod gc;
 pub mod paths;
 pub mod policy;
 pub mod session;
