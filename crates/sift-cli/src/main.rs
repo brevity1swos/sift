@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 mod cmd_accept;
 mod cmd_diff;
+mod cmd_gc;
 mod cmd_history;
 mod cmd_init;
 mod cmd_list;
@@ -59,6 +60,15 @@ enum Commands {
         #[arg(long)]
         apply: bool,
     },
+    /// Garbage-collect old closed sessions (dry-run by default).
+    Gc {
+        /// Retention period in days.
+        #[arg(long, default_value_t = 7)]
+        days: u32,
+        /// Actually delete sessions (default is dry-run).
+        #[arg(long)]
+        apply: bool,
+    },
     /// Set the session mode (strict or loose).
     Mode { mode: String },
     /// Launch the TUI sidecar for interactive review.
@@ -110,6 +120,9 @@ fn main() -> Result<ExitCode> {
         }
         Some(Commands::Sweep { apply }) => {
             cmd_sweep::run(&cwd, apply)?;
+        }
+        Some(Commands::Gc { days, apply }) => {
+            cmd_gc::run(&cwd, days, !apply)?;
         }
         Some(Commands::Mode { mode }) => {
             cmd_mode::run(&cwd, mode)?;
