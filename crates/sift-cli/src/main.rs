@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 mod cmd_accept;
 mod cmd_diff;
+mod cmd_init;
 mod cmd_list;
 mod cmd_log;
 mod cmd_mode;
@@ -61,6 +62,15 @@ enum Commands {
     Mode { mode: String },
     /// Launch the TUI sidecar for interactive review.
     Review,
+    /// Wire sift hooks into the current project (or globally).
+    Init {
+        /// Write hooks to user-level config instead of project-level.
+        #[arg(long)]
+        global: bool,
+        /// Target tool: claude (default), gemini, or cline.
+        #[arg(long, default_value = "claude")]
+        tool: String,
+    },
 }
 
 fn main() -> Result<ExitCode> {
@@ -98,6 +108,9 @@ fn main() -> Result<ExitCode> {
         }
         Some(Commands::Review) => {
             cmd_review::run(&cwd)?;
+        }
+        Some(Commands::Init { global, tool }) => {
+            cmd_init::run(&cwd, global, &tool)?;
         }
     }
     Ok(ExitCode::from(0))
