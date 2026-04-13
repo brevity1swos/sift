@@ -24,20 +24,32 @@ pub struct StagingRecord {
     pub tool_name: String,
 }
 
+/// Staging record for Bash commands: just a timestamp so post-tool can
+/// find files modified after this point.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BashStaging {
+    pub timestamp_ms: u128,
+    pub command: String,
+}
+
 pub fn run(event: HookEvent) -> Result<()> {
     let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
     let paths = Paths::new(&project_root);
 
-    // No current session → nothing to record.
     if paths.current_symlink().symlink_metadata().is_err() {
         return Ok(());
     }
     let session = Session::open_current(Paths::new(&project_root))?;
 
-    // Only Write/Edit/MultiEdit are captured in v0.1.
     let Some(tool_name) = event.tool_name else {
         return Ok(());
     };
+
+    // Bash: save a timestamp marker so post-tool can detect modified files.
+    if tool_name == "Bash" {
+        return handle_bash_pre(&paths, &session, &event.raw, &event.tool_input);
+    }
+
     if !matches!(tool_name.as_str(), "Write" | "Edit" | "MultiEdit") {
         return Ok(());
     }
@@ -110,5 +122,38 @@ pub fn run(event: HookEvent) -> Result<()> {
     };
     fs::write(&staging_path, serde_json::to_string(&record)?)
         .with_context(|| format!("writing staging {}", staging_path.display()))?;
+    Ok(())
+}
+
+fn handle_bash_pre(
+    paths: &Paths,
+    session: &Session,
+    raw: &serde_json::Value,
+    tool_input: &Option<serde_json::Value>,
+) -> Result<()> {
+    let command = tool_input
+        .as_ref()
+        .and_then(|ti| ti.get("command").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+
+    let timestamp_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+
+    let key = derive_key(raw);
+    let staging_path = paths.staging_path(&session.id, &key);
+    if let Some(p) = staging_path.parent() {
+        fs::create_dir_all(p)
+            .with_context(|| format!("creating staging dir {}", p.display()))?;
+    }
+
+    let record = BashStaging {
+        timestamp_ms,
+        command,
+    };
+    fs::write(&staging_path, serde_json::to_string(&record)?)
+        .with_context(|| format!("writing bash staging {}", staging_path.display()))?;
     Ok(())
 }

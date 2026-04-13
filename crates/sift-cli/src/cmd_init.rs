@@ -63,11 +63,11 @@ fn init_claude(cwd: &Path, global: bool) -> Result<()> {
                 "hooks": [{"type": "command", "command": "sift-hook user-prompt"}]
             }],
             "PreToolUse": [{
-                "matcher": "Write|Edit|MultiEdit",
+                "matcher": "Write|Edit|MultiEdit|Bash",
                 "hooks": [{"type": "command", "command": "sift-hook pre-tool"}]
             }],
             "PostToolUse": [{
-                "matcher": "Write|Edit|MultiEdit",
+                "matcher": "Write|Edit|MultiEdit|Bash",
                 "hooks": [{"type": "command", "command": "sift-hook post-tool"}]
             }],
             "Stop": [{

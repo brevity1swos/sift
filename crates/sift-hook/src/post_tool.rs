@@ -19,10 +19,13 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::payload::HookEvent;
-use crate::pre_tool::StagingRecord;
+use crate::pre_tool::{BashStaging, StagingRecord};
 
 pub fn run(event: HookEvent) -> Result<()> {
-    let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
+    let project_root = event
+        .cwd
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("."));
     let paths = Paths::new(&project_root);
 
     if paths.current_symlink().symlink_metadata().is_err() {
@@ -30,7 +33,11 @@ pub fn run(event: HookEvent) -> Result<()> {
     }
     let session = Session::open_current(Paths::new(&project_root))?;
 
-    // Only Write/Edit/MultiEdit are captured.
+    // Bash: detect files modified since the pre-tool timestamp.
+    if event.tool_name.as_deref() == Some("Bash") {
+        return handle_bash_post(&event, &paths, &session, &project_root);
+    }
+
     let tool = match event.tool_name.as_deref() {
         Some("Write") => Tool::Write,
         Some("Edit") => Tool::Edit,
@@ -115,6 +122,109 @@ pub fn run(event: HookEvent) -> Result<()> {
     Store::new(&session.dir).append_pending(&entry)?;
 
     // Cleanup staging record (ignore errors — the entry is what matters).
+    let _ = fs::remove_file(&staging_path);
+    Ok(())
+}
+
+/// Handle Bash PostToolUse: walk the project, find files modified after the
+/// pre-tool timestamp, and create ledger entries for each.
+fn handle_bash_post(
+    event: &HookEvent,
+    paths: &Paths,
+    session: &Session,
+    project_root: &std::path::Path,
+) -> Result<()> {
+    use walkdir::WalkDir;
+
+    let key = derive_key(&event.raw);
+    let staging_path = paths.staging_path(&session.id, &key);
+    let bash: BashStaging = match fs::read_to_string(&staging_path) {
+        Ok(s) => serde_json::from_str(&s)
+            .with_context(|| format!("parsing bash staging {}", staging_path.display()))?,
+        Err(_) => return Ok(()), // no pre-tool record
+    };
+
+    let pre_time = std::time::UNIX_EPOCH
+        + std::time::Duration::from_millis(bash.timestamp_ms as u64);
+
+    let snap = SnapshotStore::new(paths, &session.id);
+    let turn = SessionState::load(&session.state_path())
+        .map(|s| s.turn)
+        .unwrap_or(0);
+    let store = Store::new(&session.dir);
+
+    let rationale = if bash.command.is_empty() {
+        String::new()
+    } else {
+        format!("bash: {}", truncate_to_sentence(&bash.command, 100))
+    };
+
+    // Walk the project and find files modified after the pre-tool timestamp.
+    for entry in WalkDir::new(project_root).into_iter().filter_entry(|e| {
+        let name = e.file_name().to_string_lossy();
+        !matches!(
+            name.as_ref(),
+            ".git" | "target" | "node_modules" | ".sift" | ".omc"
+        )
+    }) {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let modified = match meta.modified() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        // Only files modified AFTER the pre-tool timestamp.
+        if modified <= pre_time {
+            continue;
+        }
+        let abs_path = entry.path();
+        let rel_path = match abs_path.strip_prefix(project_root) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => continue,
+        };
+
+        // Skip paths that look like build artifacts or hidden files.
+        let rel_str = rel_path.to_string_lossy();
+        if rel_str.starts_with('.') || rel_str.contains("/.") {
+            continue;
+        }
+
+        // Snapshot the current content as post-state.
+        let bytes = match fs::read(abs_path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let post_hash = snap.put(&bytes)?;
+        let diff_stats = stats(
+            "",
+            &String::from_utf8_lossy(&bytes),
+        );
+
+        let ledger_entry = LedgerEntry {
+            id: new_entry_id(),
+            turn,
+            tool: Tool::Write, // Attribute to Write since we can't distinguish
+            path: rel_path,
+            op: Op::Modify, // Conservative — could be create or modify
+            rationale: rationale.clone(),
+            diff_stats,
+            snapshot_before: None, // No pre-state for Bash
+            snapshot_after: Some(post_hash),
+            status: Status::Pending,
+            timestamp: Utc::now(),
+        };
+        store.append_pending(&ledger_entry)?;
+    }
+
     let _ = fs::remove_file(&staging_path);
     Ok(())
 }
