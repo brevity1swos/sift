@@ -3,7 +3,10 @@ use chrono::Duration;
 use sift_core::{gc, paths::Paths};
 use std::path::Path;
 
-pub fn run(cwd: &Path, days: u32, dry_run: bool) -> Result<()> {
+pub fn run(cwd: &Path, days: u16, apply: bool) -> Result<()> {
+    // `apply` means "actually delete"; `dry_run` is its inverse. We invert here
+    // (rather than at the call site) so the CLI handler stays readable.
+    let dry_run = !apply;
     let paths = Paths::new(cwd);
     let result = gc::collect(&paths, Duration::days(i64::from(days)), dry_run)?;
 

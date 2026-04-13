@@ -64,7 +64,7 @@ enum Commands {
     Gc {
         /// Retention period in days.
         #[arg(long, default_value_t = 7)]
-        days: u32,
+        days: u16,
         /// Actually delete sessions (default is dry-run).
         #[arg(long)]
         apply: bool,
@@ -122,7 +122,7 @@ fn main() -> Result<ExitCode> {
             cmd_sweep::run(&cwd, apply)?;
         }
         Some(Commands::Gc { days, apply }) => {
-            cmd_gc::run(&cwd, days, !apply)?;
+            cmd_gc::run(&cwd, days, apply)?;
         }
         Some(Commands::Mode { mode }) => {
             cmd_mode::run(&cwd, mode)?;
