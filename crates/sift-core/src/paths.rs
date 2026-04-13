@@ -56,6 +56,11 @@ impl Paths {
         self.sift_dir().join("config.toml")
     }
 
+    /// `.sift/policy.yml`
+    pub fn policy_file(&self) -> PathBuf {
+        self.sift_dir().join("policy.yml")
+    }
+
     /// `.sift/sessions/`
     pub fn sessions_dir(&self) -> PathBuf {
         self.sift_dir().join("sessions")

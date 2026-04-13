@@ -9,11 +9,15 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sift_core::{
-    correlation::derive_key, paths::validate_relative_path, paths::Paths, session::Session,
+    correlation::derive_key,
+    paths::{validate_relative_path, Paths},
+    policy::{Action, Policy},
+    session::Session,
     snapshot::SnapshotStore,
 };
 use std::fs;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use crate::payload::HookEvent;
 
@@ -32,33 +36,34 @@ pub struct BashStaging {
     pub command: String,
 }
 
-pub fn run(event: HookEvent) -> Result<()> {
+pub fn run(event: HookEvent) -> Result<ExitCode> {
     let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
     let paths = Paths::new(&project_root);
 
     if paths.current_symlink().symlink_metadata().is_err() {
-        return Ok(());
+        return Ok(ExitCode::from(0));
     }
     let session = Session::open_current(Paths::new(&project_root))?;
 
     let Some(tool_name) = event.tool_name else {
-        return Ok(());
+        return Ok(ExitCode::from(0));
     };
 
     // Bash: save a timestamp marker so post-tool can detect modified files.
     if tool_name == "Bash" {
-        return handle_bash_pre(&paths, &session, &event.raw, &event.tool_input);
+        handle_bash_pre(&paths, &session, &event.raw, &event.tool_input)?;
+        return Ok(ExitCode::from(0));
     }
 
     if !matches!(tool_name.as_str(), "Write" | "Edit" | "MultiEdit") {
-        return Ok(());
+        return Ok(ExitCode::from(0));
     }
 
     let Some(tool_input) = event.tool_input else {
-        return Ok(());
+        return Ok(ExitCode::from(0));
     };
     let Some(target_path) = tool_input.get("file_path").and_then(|v| v.as_str()) else {
-        return Ok(());
+        return Ok(ExitCode::from(0));
     };
     let target_path = PathBuf::from(target_path);
 
@@ -87,7 +92,7 @@ pub fn run(event: HookEvent) -> Result<()> {
                     Ok(rel) => rel.to_path_buf(),
                     Err(_) => {
                         // File is outside the project root — skip silently.
-                        return Ok(());
+                        return Ok(ExitCode::from(0));
                     }
                 }
             }
@@ -95,10 +100,29 @@ pub fn run(event: HookEvent) -> Result<()> {
     } else {
         // Relative path: reject `..` components that could escape the root.
         if validate_relative_path(&target_path).is_err() {
-            return Ok(());
+            return Ok(ExitCode::from(0));
         }
         target_path.to_path_buf()
     };
+
+    // Policy check: evaluate the relative path against .sift/policy.yml.
+    let policy = Policy::load(&paths.policy_file())?;
+    match policy.evaluate(&rel_path) {
+        Action::Deny => {
+            eprintln!(
+                "sift: BLOCKED by policy — write to '{}' is denied by .sift/policy.yml",
+                rel_path.display()
+            );
+            return Ok(ExitCode::from(2));
+        }
+        Action::Review => {
+            eprintln!(
+                "sift: note — write to '{}' is flagged for review by .sift/policy.yml",
+                rel_path.display()
+            );
+        }
+        Action::Allow => {}
+    }
 
     // Snapshot the pre-state, if the file exists.
     let snap = SnapshotStore::new(&paths, &session.id);
@@ -122,7 +146,7 @@ pub fn run(event: HookEvent) -> Result<()> {
     };
     fs::write(&staging_path, serde_json::to_string(&record)?)
         .with_context(|| format!("writing staging {}", staging_path.display()))?;
-    Ok(())
+    Ok(ExitCode::from(0))
 }
 
 fn handle_bash_pre(

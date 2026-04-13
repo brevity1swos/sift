@@ -27,6 +27,7 @@ notify = "7"
 similar = "2"
 globset = "0.4"
 walkdir = "2"
+serde_yaml_ng = "0.10"
 # dev
 tempfile = "3"
 assert_cmd = "2"

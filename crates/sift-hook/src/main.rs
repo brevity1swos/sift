@@ -21,10 +21,7 @@ fn main() -> Result<ExitCode> {
             Ok(ExitCode::from(0))
         }
         "user-prompt" => user_prompt::run(event),
-        "pre-tool" => {
-            pre_tool::run(event)?;
-            Ok(ExitCode::from(0))
-        }
+        "pre-tool" => pre_tool::run(event),
         "post-tool" => {
             post_tool::run(event)?;
             Ok(ExitCode::from(0))
