@@ -234,6 +234,11 @@ impl Store {
         Ok(())
     }
 
+    /// Rewrite pending.jsonl with the given entries (public for TUI edit flow).
+    pub fn rewrite_pending_entries(&self, entries: &[LedgerEntry]) -> Result<()> {
+        self.rewrite_pending(entries)
+    }
+
     fn rewrite_pending(&self, entries: &[LedgerEntry]) -> Result<()> {
         let tmp = self.session_dir.join("pending.jsonl.tmp");
         {

@@ -26,11 +26,15 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
             if let Some(e) = app.current() {
                 let id = e.id.clone();
                 let store = sift_core::store::Store::new(&app.session_dir);
-                // Note: marks as Reverted in the ledger only. On-disk file
-                // restoration requires Paths + session_id, which the TUI does
-                // not carry. Use `sift revert <id>` for a full on-disk revert.
                 store.finalize(&id, sift_core::Status::Reverted)?;
                 app.reload()?;
+            }
+        }
+        KeyCode::Char('e') => {
+            // Request edit — the main loop will suspend the TUI, spawn
+            // $EDITOR on the post-state snapshot, and resume after.
+            if let Some(e) = app.current() {
+                app.edit_request = Some(e.id.clone());
             }
         }
         _ => {}

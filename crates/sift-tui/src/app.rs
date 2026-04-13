@@ -9,6 +9,28 @@ pub struct App {
     pub entries: Vec<LedgerEntry>,
     pub cursor: usize,
     pub should_quit: bool,
+    /// Set by `e` key — the main loop suspends the TUI and spawns $EDITOR.
+    pub edit_request: Option<String>,
+}
+
+impl App {
+    /// Derive project root from session_dir: `<root>/.sift/sessions/<id>` → `<root>`
+    pub fn project_root(&self) -> PathBuf {
+        self.session_dir
+            .parent() // .sift/sessions
+            .and_then(|p| p.parent()) // .sift
+            .and_then(|p| p.parent()) // project root
+            .unwrap_or(Path::new("."))
+            .to_path_buf()
+    }
+
+    /// Derive session id from the last path component.
+    pub fn session_id(&self) -> String {
+        self.session_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
 }
 
 impl App {
@@ -18,6 +40,7 @@ impl App {
             entries: vec![],
             cursor: 0,
             should_quit: false,
+            edit_request: None,
         };
         app.reload()?;
         Ok(app)
