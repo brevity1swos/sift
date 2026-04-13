@@ -90,13 +90,22 @@ pub fn run(event: HookEvent) -> Result<()> {
         .map(|s| s.turn)
         .unwrap_or(0);
 
+    // Best-effort rationale from the session transcript. If the transcript
+    // is missing or unparseable, fall back to empty (user can annotate later
+    // via `n` in the TUI).
+    let rationale = event
+        .transcript_path
+        .as_ref()
+        .and_then(|p| extract_rationale_from_transcript(p))
+        .unwrap_or_default();
+
     let entry = LedgerEntry {
         id: new_entry_id(),
         turn,
         tool,
         path: staging.path,
         op,
-        rationale: String::new(),
+        rationale,
         diff_stats,
         snapshot_before: staging.pre_hash,
         snapshot_after: post_hash,
@@ -108,4 +117,84 @@ pub fn run(event: HookEvent) -> Result<()> {
     // Cleanup staging record (ignore errors — the entry is what matters).
     let _ = fs::remove_file(&staging_path);
     Ok(())
+}
+
+/// Scan the Claude Code session transcript (JSONL) backward and extract the
+/// most recent assistant text as a one-line rationale. The transcript format
+/// is undocumented and may change; this is best-effort.
+///
+/// Strategy: read the file, parse each line as a JSON object, collect all
+/// objects with `"role": "assistant"` and a `"content"` field containing text,
+/// take the last one, and extract the first sentence (up to 120 chars).
+fn extract_rationale_from_transcript(path: &std::path::Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    let mut last_assistant_text: Option<String> = None;
+
+    for line in text.lines() {
+        let obj: serde_json::Value = serde_json::from_str(line).ok()?;
+
+        // Claude Code transcripts use various shapes. Try common ones:
+        // 1. {"role": "assistant", "content": "text..."}
+        // 2. {"role": "assistant", "content": [{"type": "text", "text": "..."}]}
+        // 3. {"type": "assistant", "message": {"content": [...]}}
+        if obj.get("role").and_then(|v| v.as_str()) == Some("assistant") {
+            if let Some(content) = obj.get("content") {
+                let text = extract_text_from_content(content);
+                if !text.is_empty() {
+                    last_assistant_text = Some(text);
+                }
+            }
+        } else if obj.get("type").and_then(|v| v.as_str()) == Some("assistant") {
+            if let Some(msg) = obj.get("message") {
+                if let Some(content) = msg.get("content") {
+                    let text = extract_text_from_content(content);
+                    if !text.is_empty() {
+                        last_assistant_text = Some(text);
+                    }
+                }
+            }
+        }
+    }
+
+    last_assistant_text.map(|t| truncate_to_sentence(&t, 120))
+}
+
+fn extract_text_from_content(content: &serde_json::Value) -> String {
+    // String content: "content": "some text"
+    if let Some(s) = content.as_str() {
+        return s.trim().to_string();
+    }
+    // Array content: "content": [{"type": "text", "text": "..."}]
+    if let Some(arr) = content.as_array() {
+        for item in arr {
+            if item.get("type").and_then(|v| v.as_str()) == Some("text") {
+                if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
+                    let trimmed = t.trim();
+                    if !trimmed.is_empty() {
+                        return trimmed.to_string();
+                    }
+                }
+            }
+        }
+    }
+    String::new()
+}
+
+/// Take the first sentence (ending in '.', '!', '?') or truncate to `max` chars.
+fn truncate_to_sentence(text: &str, max: usize) -> String {
+    // Take only the first line to avoid multi-paragraph rationale.
+    let first_line = text.lines().next().unwrap_or(text);
+    // Find the first sentence end.
+    if let Some(pos) = first_line.find(['.', '!', '?']) {
+        let end = pos + 1;
+        if end <= max {
+            return first_line[..end].to_string();
+        }
+    }
+    // No sentence end found or too long — truncate.
+    if first_line.len() <= max {
+        first_line.to_string()
+    } else {
+        format!("{}...", &first_line[..max.saturating_sub(3)])
+    }
 }

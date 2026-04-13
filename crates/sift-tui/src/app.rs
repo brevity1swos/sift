@@ -4,6 +4,12 @@ use anyhow::Result;
 use sift_core::{entry::LedgerEntry, store::Store};
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    Normal,
+    Annotating,
+}
+
 pub struct App {
     pub session_dir: PathBuf,
     pub entries: Vec<LedgerEntry>,
@@ -11,6 +17,12 @@ pub struct App {
     pub should_quit: bool,
     /// Set by `e` key — the main loop suspends the TUI and spawns $EDITOR.
     pub edit_request: Option<String>,
+    /// Current input mode (Normal or typing an annotation).
+    pub input_mode: InputMode,
+    /// Text buffer for the annotation being typed.
+    pub input_buf: String,
+    /// Entry ID being annotated.
+    pub annotating_id: Option<String>,
 }
 
 impl App {
@@ -41,6 +53,9 @@ impl App {
             cursor: 0,
             should_quit: false,
             edit_request: None,
+            input_mode: InputMode::Normal,
+            input_buf: String::new(),
+            annotating_id: None,
         };
         app.reload()?;
         Ok(app)
