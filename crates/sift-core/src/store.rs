@@ -352,6 +352,45 @@ impl Store {
         Ok(())
     }
 
+    /// Rewrite `pending.jsonl` from the folded-and-filtered view and truncate
+    /// `pending_changes.jsonl`. After this runs, `pending.jsonl` contains only
+    /// the currently-pending entries, and the change-file is empty.
+    pub fn compact_pending(&self) -> Result<()> {
+        let entries = self.list_pending()?; // already folded and filtered to Pending
+        self.rewrite_pending(&entries)?;
+        // Truncate the changes file by removing it.
+        let changes = self.pending_changes_path();
+        if changes.exists() {
+            fs::remove_file(&changes)
+                .with_context(|| format!("removing {}", changes.display()))?;
+        }
+        Ok(())
+    }
+
+    /// Rewrite `ledger.jsonl` from the folded view and truncate
+    /// `ledger_changes.jsonl`.
+    pub fn compact_ledger(&self) -> Result<()> {
+        let entries = self.list_ledger()?; // folded, no status filter
+        let tmp = self.session_dir.join("ledger.jsonl.tmp");
+        {
+            let mut f =
+                File::create(&tmp).with_context(|| format!("creating tmp {}", tmp.display()))?;
+            for e in &entries {
+                writeln!(f, "{}", serde_json::to_string(e)?)
+                    .with_context(|| format!("writing tmp {}", tmp.display()))?;
+            }
+        }
+        fs::rename(&tmp, self.ledger_path()).with_context(|| {
+            format!("renaming tmp -> ledger {}", self.ledger_path().display())
+        })?;
+        let changes = self.ledger_changes_path();
+        if changes.exists() {
+            fs::remove_file(&changes)
+                .with_context(|| format!("removing {}", changes.display()))?;
+        }
+        Ok(())
+    }
+
     fn append_ledger(&self, entry: &LedgerEntry) -> Result<()> {
         let path = self.ledger_path();
         let mut f = OpenOptions::new()
@@ -694,6 +733,102 @@ mod tests {
         let pending = store.list_pending().unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].id, "02");
+    }
+
+    #[test]
+    fn compact_pending_removes_tombstones_and_finalized_entries() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.append_pending(&make_entry("02", 2)).unwrap();
+        store.append_pending(&make_entry("03", 3)).unwrap();
+        store.finalize("02", Status::Accepted).unwrap();
+
+        // Before compact: 3 entries + 1 tombstone.
+        assert_eq!(
+            fs::read_to_string(store.pending_path())
+                .unwrap()
+                .lines()
+                .count(),
+            3
+        );
+        assert_eq!(
+            fs::read_to_string(store.pending_changes_path())
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+
+        store.compact_pending().unwrap();
+
+        // After compact: 2 entries, no changes file.
+        assert_eq!(
+            fs::read_to_string(store.pending_path())
+                .unwrap()
+                .lines()
+                .count(),
+            2
+        );
+        assert!(!store.pending_changes_path().exists());
+
+        // list_pending still returns the same 2 entries.
+        let pending = store.list_pending().unwrap();
+        assert_eq!(pending.len(), 2);
+        let ids: Vec<&str> = pending.iter().map(|e| e.id.as_str()).collect();
+        assert!(ids.contains(&"01"));
+        assert!(ids.contains(&"03"));
+    }
+
+    #[test]
+    fn compact_ledger_folds_status_changes() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.finalize("01", Status::Accepted).unwrap();
+        store.update_ledger_status("01", Status::Reverted).unwrap();
+
+        // Before compact: 1 entry + 1 change.
+        assert_eq!(
+            fs::read_to_string(store.ledger_path())
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+        assert_eq!(
+            fs::read_to_string(store.ledger_changes_path())
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+
+        store.compact_ledger().unwrap();
+
+        // After compact: 1 entry with the folded status, no changes file.
+        assert_eq!(
+            fs::read_to_string(store.ledger_path())
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+        assert!(!store.ledger_changes_path().exists());
+
+        let ledger = store.list_ledger().unwrap();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].status, Status::Reverted);
+    }
+
+    #[test]
+    fn compact_idempotent_on_empty_session() {
+        // Compact when there are no pending/ledger entries at all. Must not error.
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        fs::create_dir_all(td.path()).unwrap();
+        store.compact_pending().unwrap();
+        store.compact_ledger().unwrap();
     }
 
     #[test]

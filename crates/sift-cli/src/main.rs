@@ -68,6 +68,9 @@ enum Commands {
         /// Actually delete sessions (default is dry-run).
         #[arg(long)]
         apply: bool,
+        /// Compact the current session's JSONL files instead of deleting old sessions.
+        #[arg(long, conflicts_with_all = ["days", "apply"])]
+        compact: bool,
     },
     /// Set the session mode (strict or loose).
     Mode { mode: String },
@@ -121,8 +124,12 @@ fn main() -> Result<ExitCode> {
         Some(Commands::Sweep { apply }) => {
             cmd_sweep::run(&cwd, apply)?;
         }
-        Some(Commands::Gc { days, apply }) => {
-            cmd_gc::run(&cwd, days, apply)?;
+        Some(Commands::Gc {
+            days,
+            apply,
+            compact,
+        }) => {
+            cmd_gc::run(&cwd, days, apply, compact)?;
         }
         Some(Commands::Mode { mode }) => {
             cmd_mode::run(&cwd, mode)?;
