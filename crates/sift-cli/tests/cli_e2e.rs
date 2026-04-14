@@ -198,7 +198,6 @@ fn gc_compact_current_session() {
         pending_changes.exists(),
         "pending_changes.jsonl must exist after accept"
     );
-    let lines_before = fs::read_to_string(&pending).unwrap().lines().count();
 
     // Run compact.
     let output = Command::cargo_bin("sift")
@@ -219,11 +218,12 @@ fn gc_compact_current_session() {
         !pending_changes.exists(),
         "pending_changes.jsonl should be removed after compact"
     );
-    // pending.jsonl has been rewritten with finalized entries removed.
-    let lines_after = fs::read_to_string(&pending).unwrap().lines().count();
-    assert!(
-        lines_after < lines_before,
-        "pending.jsonl should have fewer lines after compact (before={lines_before}, after={lines_after})"
+    // All three entries were accepted, so pending.jsonl should be empty.
+    let content_after = fs::read_to_string(&pending).unwrap_or_default();
+    let lines_after = content_after.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(
+        lines_after, 0,
+        "after compact+accept all, pending.jsonl should be empty"
     );
 }
 

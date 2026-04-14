@@ -42,11 +42,11 @@ impl Store {
     }
     /// Side-file of status changes (tombstones) for pending entries. Reading
     /// pending involves folding these over the bare entries in `pending.jsonl`.
-    pub fn pending_changes_path(&self) -> PathBuf {
+    pub(crate) fn pending_changes_path(&self) -> PathBuf {
         self.session_dir.join("pending_changes.jsonl")
     }
     /// Side-file of status changes for ledger entries.
-    pub fn ledger_changes_path(&self) -> PathBuf {
+    pub(crate) fn ledger_changes_path(&self) -> PathBuf {
         self.session_dir.join("ledger_changes.jsonl")
     }
 
@@ -314,6 +314,11 @@ impl Store {
     /// `StatusChange` is appended to `ledger_changes.jsonl` and folded over
     /// the ledger on subsequent reads. `id` may be a prefix of the full id.
     /// Returns the entry with its new status, or Err if not found.
+    ///
+    /// **Concurrency & bloat:** two concurrent updates for the same id append
+    /// two `StatusChange` rows to `ledger_changes.jsonl`; the fold converges
+    /// to the last-write-wins value but the change file grows. `sift gc
+    /// --compact` collapses the history.
     pub fn update_ledger_status(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
         let ledger = self.list_ledger()?;
         let entry = ledger
@@ -332,6 +337,9 @@ impl Store {
     }
 
     /// Rewrite pending.jsonl with the given entries (public for TUI edit flow).
+    ///
+    /// Also truncates `pending_changes.jsonl`, since the provided entries are
+    /// assumed to be a post-fold view — any tombstones would become orphans.
     pub fn rewrite_pending_entries(&self, entries: &[LedgerEntry]) -> Result<()> {
         self.rewrite_pending(entries)
     }
@@ -349,6 +357,13 @@ impl Store {
         fs::rename(&tmp, self.pending_path()).with_context(|| {
             format!("renaming tmp -> pending {}", self.pending_path().display())
         })?;
+        // rewrite_pending writes the folded view — tombstones in pending_changes.jsonl
+        // are now logically empty. Remove the file so orphan tombstones don't accumulate.
+        let changes = self.pending_changes_path();
+        if changes.exists() {
+            fs::remove_file(&changes)
+                .with_context(|| format!("removing {}", changes.display()))?;
+        }
         Ok(())
     }
 
@@ -708,9 +723,13 @@ mod tests {
     #[test]
     fn edit_flow_preserves_existing_tombstones() {
         // Regression: the TUI edit flow calls `rewrite_pending_entries` with
-        // a post-fold view. Verify that a prior finalize's tombstone in
-        // pending_changes.jsonl still filters the finalized entry out even
-        // after a rewrite_pending_entries on a DIFFERENT entry.
+        // a post-fold view. Verify that after a rewrite on a DIFFERENT entry,
+        // a previously-finalized entry stays excluded from `list_pending`.
+        //
+        // Note: rewrite_pending_entries also truncates pending_changes.jsonl,
+        // because the post-fold view has no tombstones in it — so the finalize
+        // tombstone is gone after the rewrite, but the entry is also not in
+        // pending.jsonl anymore, so `list_pending` still excludes it.
         let td = TempDir::new().unwrap();
         let store = Store::new(td.path());
         store.append_pending(&make_entry("01", 1)).unwrap();
@@ -728,8 +747,36 @@ mod tests {
         }
         store.rewrite_pending_entries(&pending).unwrap();
 
-        // After the rewrite, list_pending should still correctly exclude 01
-        // (its tombstone is still in pending_changes.jsonl).
+        // After the rewrite, list_pending should still correctly exclude 01.
+        let pending = store.list_pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "02");
+    }
+
+    #[test]
+    fn rewrite_pending_truncates_change_file() {
+        // rewrite_pending_entries must also clear pending_changes.jsonl, otherwise
+        // orphan tombstones accumulate after every TUI edit flow.
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.append_pending(&make_entry("02", 2)).unwrap();
+        store.finalize("01", Status::Accepted).unwrap();
+
+        // Sanity: pending_changes.jsonl exists.
+        assert!(store.pending_changes_path().exists());
+
+        // Simulate a rewrite from the folded view (as TUI edit flow does).
+        let pending = store.list_pending().unwrap();
+        store.rewrite_pending_entries(&pending).unwrap();
+
+        // The change file must be gone.
+        assert!(
+            !store.pending_changes_path().exists(),
+            "rewrite_pending must truncate pending_changes.jsonl"
+        );
+
+        // And list_pending still returns only the pending entry.
         let pending = store.list_pending().unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].id, "02");
