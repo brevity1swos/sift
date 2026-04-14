@@ -84,6 +84,15 @@ pub struct LedgerEntry {
     pub timestamp: DateTime<Utc>,
 }
 
+/// A status-change record for append-only status updates.
+/// Stored in pending_changes.jsonl or ledger_changes.jsonl.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StatusChange {
+    pub id: String,
+    pub new_status: Status,
+    pub timestamp: DateTime<Utc>,
+}
+
 /// Generate a fresh ULID string suitable for a new ledger entry's `id` field.
 ///
 /// Kept as a module-level free function rather than an associated method on
@@ -161,5 +170,22 @@ mod tests {
     fn new_entry_id_returns_26_char_string() {
         let u = new_entry_id();
         assert_eq!(u.len(), 26);
+    }
+
+    #[test]
+    fn status_change_roundtrip() {
+        let sc = StatusChange {
+            id: "01HVXK5QZ9G7B2000000000000".to_string(),
+            new_status: Status::Accepted,
+            timestamp: DateTime::parse_from_rfc3339("2026-04-11T14:35:22Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        };
+        let s = serde_json::to_string(&sc).unwrap();
+        let back: StatusChange = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, sc);
+        // Verify JSON shape uses lowercase status.
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["new_status"], "accepted");
     }
 }

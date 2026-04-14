@@ -1,11 +1,12 @@
 //! The ledger store: append-only pending.jsonl + finalized ledger.jsonl.
 
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use crate::entry::{LedgerEntry, Op, Status};
+use crate::entry::{LedgerEntry, Op, Status, StatusChange};
 use crate::paths::{validate_relative_path, Paths};
 use crate::snapshot::SnapshotStore;
 
@@ -39,6 +40,15 @@ impl Store {
     pub fn ledger_path(&self) -> PathBuf {
         self.session_dir.join("ledger.jsonl")
     }
+    /// Side-file of status changes (tombstones) for pending entries. Reading
+    /// pending involves folding these over the bare entries in `pending.jsonl`.
+    pub fn pending_changes_path(&self) -> PathBuf {
+        self.session_dir.join("pending_changes.jsonl")
+    }
+    /// Side-file of status changes for ledger entries.
+    pub fn ledger_changes_path(&self) -> PathBuf {
+        self.session_dir.join("ledger_changes.jsonl")
+    }
 
     /// Append a pending entry to `pending.jsonl`.
     pub fn append_pending(&self, entry: &LedgerEntry) -> Result<()> {
@@ -57,25 +67,116 @@ impl Store {
     }
 
     /// Read all pending entries, silently skipping malformed lines.
+    /// Only entries whose current status is `Pending` are returned — entries
+    /// finalized via `finalize()` have a tombstone in `pending_changes.jsonl`
+    /// and are filtered out here.
     pub fn list_pending(&self) -> Result<Vec<LedgerEntry>> {
         Ok(self.list_pending_with_stats()?.entries)
     }
 
-    /// Read all finalized entries, silently skipping malformed lines.
+    /// Read all finalized entries (with status changes folded in), silently
+    /// skipping malformed lines.
     pub fn list_ledger(&self) -> Result<Vec<LedgerEntry>> {
         Ok(self.list_ledger_with_stats()?.entries)
     }
 
     /// Read pending entries and return a `ReadStats` including the count
-    /// of lines that failed to parse. Useful for `sift fsck` and for tests
+    /// of lines that failed to parse across both the entries file and the
+    /// status-changes side-file. Useful for `sift fsck` and for tests
     /// that need to assert on the skip count.
+    ///
+    /// Status changes in `pending_changes.jsonl` are folded over the bare
+    /// entries, and the result is filtered to `Status::Pending` so that
+    /// callers only see entries that have not yet been finalized.
     pub fn list_pending_with_stats(&self) -> Result<ReadStats> {
-        Self::read_jsonl(&self.pending_path())
+        let raw = Self::read_jsonl(&self.pending_path())?;
+        let (changes, changes_skipped) = Self::read_changes(&self.pending_changes_path())?;
+        let folded = Self::apply_changes(raw.entries, &changes);
+        let entries = folded
+            .into_iter()
+            .filter(|e| e.status == Status::Pending)
+            .collect();
+        Ok(ReadStats {
+            entries,
+            skipped: raw.skipped + changes_skipped,
+        })
     }
 
-    /// Read finalized entries and return a `ReadStats`.
+    /// Read finalized entries and return a `ReadStats`. Status changes in
+    /// `ledger_changes.jsonl` are folded over the bare entries.
     pub fn list_ledger_with_stats(&self) -> Result<ReadStats> {
-        Self::read_jsonl(&self.ledger_path())
+        let raw = Self::read_jsonl(&self.ledger_path())?;
+        let (changes, changes_skipped) = Self::read_changes(&self.ledger_changes_path())?;
+        let entries = Self::apply_changes(raw.entries, &changes);
+        Ok(ReadStats {
+            entries,
+            skipped: raw.skipped + changes_skipped,
+        })
+    }
+
+    /// Read a `StatusChange` JSONL file. Returns an empty vec if the file does
+    /// not exist. Malformed lines are counted and skipped.
+    fn read_changes(path: &Path) -> Result<(Vec<StatusChange>, usize)> {
+        let f = match File::open(path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok((Vec::new(), 0));
+            }
+            Err(e) => {
+                return Err(e).with_context(|| format!("opening {}", path.display()));
+            }
+        };
+        let reader = BufReader::new(f);
+        let mut changes = Vec::new();
+        let mut skipped = 0usize;
+        for line in reader.lines() {
+            let line = line.with_context(|| format!("reading line from {}", path.display()))?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<StatusChange>(&line) {
+                Ok(c) => changes.push(c),
+                Err(_) => skipped += 1,
+            }
+        }
+        Ok((changes, skipped))
+    }
+
+    /// Fold a list of status changes over entries. Later changes override
+    /// earlier ones for the same id (last-write-wins). Changes with no
+    /// matching entry id are silently ignored — they may appear transiently
+    /// during concurrent reads/writes and are harmless.
+    fn apply_changes(
+        mut entries: Vec<LedgerEntry>,
+        changes: &[StatusChange],
+    ) -> Vec<LedgerEntry> {
+        if changes.is_empty() {
+            return entries;
+        }
+        let mut map: HashMap<&str, Status> = HashMap::new();
+        for c in changes {
+            map.insert(c.id.as_str(), c.new_status);
+        }
+        for e in entries.iter_mut() {
+            if let Some(&s) = map.get(e.id.as_str()) {
+                e.status = s;
+            }
+        }
+        entries
+    }
+
+    /// Append one status-change record to the given changes file.
+    fn append_change(&self, path: &Path, change: &StatusChange) -> Result<()> {
+        fs::create_dir_all(&self.session_dir)
+            .with_context(|| format!("creating session dir {}", self.session_dir.display()))?;
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .with_context(|| format!("opening changes {}", path.display()))?;
+        writeln!(f, "{}", serde_json::to_string(change)?)
+            .with_context(|| format!("writing changes line to {}", path.display()))?;
+        Ok(())
     }
 
     fn read_jsonl(path: &Path) -> Result<ReadStats> {
@@ -117,40 +218,31 @@ impl Store {
         Ok(ReadStats { entries, skipped })
     }
 
-    /// Filter pending entries by status (convenience).
-    pub fn pending_with_status(&self, status: Status) -> Result<Vec<LedgerEntry>> {
-        Ok(self
-            .list_pending()?
-            .into_iter()
-            .filter(|e| e.status == status)
-            .collect())
-    }
-
-    /// Move an entry from pending.jsonl to ledger.jsonl with the given final status.
-    /// Returns the entry as written, or Err if the id is not in pending.
+    /// Move an entry from pending to ledger with the given final status.
+    /// The physical `pending.jsonl` file is not rewritten; instead, a
+    /// tombstone is appended to `pending_changes.jsonl` so subsequent
+    /// `list_pending()` calls filter the entry out. The full entry (with
+    /// its new status) is appended to `ledger.jsonl`.
     ///
-    /// **Concurrency invariant:** only one writer per session dir at a time.
-    /// Two concurrent `finalize` calls would both write `pending.jsonl.tmp` and
-    /// race on rename, silently dropping one caller's mutation.
+    /// Returns the entry as written, or Err if the id is not in pending.
     pub fn finalize(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
         let pending = self.list_pending()?;
-        let (keep, take): (Vec<_>, Vec<_>) = pending.into_iter().partition(|e| e.id != id);
-        debug_assert!(
-            take.len() <= 1,
-            "duplicate entry id {id} in pending — ledger invariant violated",
-        );
-        let mut entry = take
-            .into_iter()
-            .next()
+        let entry = pending
+            .iter()
+            .find(|e| e.id == id)
             .ok_or_else(|| anyhow::anyhow!("entry {id} not in pending"))?;
-        entry.status = new_status;
-        // Append to ledger FIRST so a subsequent rewrite_pending failure leaves
-        // the entry duplicated (present in both files) rather than lost. A
-        // future fsck/dedup pass can resolve duplicates; a vanished entry
-        // cannot be recovered.
-        self.append_ledger(&entry)?;
-        self.rewrite_pending(&keep)?;
-        Ok(entry)
+        let mut finalized = entry.clone();
+        finalized.status = new_status;
+        // Append to ledger FIRST so a subsequent change-file append failure
+        // leaves the entry duplicated (present in both) rather than lost.
+        self.append_ledger(&finalized)?;
+        let change = StatusChange {
+            id: id.to_string(),
+            new_status,
+            timestamp: chrono::Utc::now(),
+        };
+        self.append_change(&self.pending_changes_path(), &change)?;
+        Ok(finalized)
     }
 
     /// Restore a reverted entry's `snapshot_before` to its path in the project root.
@@ -204,34 +296,26 @@ impl Store {
         Ok(())
     }
 
-    /// Update an entry's status in ledger.jsonl (for reverting accepted entries).
+    /// Update an entry's status in the ledger (for reverting accepted entries).
+    /// The physical `ledger.jsonl` file is not rewritten; instead a
+    /// `StatusChange` is appended to `ledger_changes.jsonl` and folded over
+    /// the ledger on subsequent reads. `id` may be a prefix of the full id.
     /// Returns the entry with its new status, or Err if not found.
     pub fn update_ledger_status(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
-        let mut ledger = self.list_ledger()?;
+        let ledger = self.list_ledger()?;
         let entry = ledger
-            .iter_mut()
+            .iter()
             .find(|e| e.id.starts_with(id))
             .ok_or_else(|| anyhow::anyhow!("entry {id} not in ledger"))?;
-        entry.status = new_status;
-        let result = entry.clone();
-        self.rewrite_ledger(&ledger)?;
-        Ok(result)
-    }
-
-    fn rewrite_ledger(&self, entries: &[LedgerEntry]) -> Result<()> {
-        let tmp = self.session_dir.join("ledger.jsonl.tmp");
-        {
-            let mut f =
-                File::create(&tmp).with_context(|| format!("creating tmp {}", tmp.display()))?;
-            for e in entries {
-                writeln!(f, "{}", serde_json::to_string(e)?)
-                    .with_context(|| format!("writing tmp {}", tmp.display()))?;
-            }
-        }
-        fs::rename(&tmp, self.ledger_path()).with_context(|| {
-            format!("renaming tmp -> ledger {}", self.ledger_path().display())
-        })?;
-        Ok(())
+        let mut updated = entry.clone();
+        updated.status = new_status;
+        let change = StatusChange {
+            id: entry.id.clone(),
+            new_status,
+            timestamp: chrono::Utc::now(),
+        };
+        self.append_change(&self.ledger_changes_path(), &change)?;
+        Ok(updated)
     }
 
     /// Rewrite pending.jsonl with the given entries (public for TUI edit flow).
@@ -346,23 +430,6 @@ mod tests {
         let ledger = store.list_ledger().unwrap();
         assert_eq!(ledger.len(), 1);
         assert_eq!(ledger[0].id, "99");
-    }
-
-    #[test]
-    fn pending_with_status_filters_correctly() {
-        let td = TempDir::new().unwrap();
-        let store = Store::new(td.path());
-        let pending_entry = make_entry("p1", 1);
-        let mut accepted_entry = make_entry("a1", 2);
-        accepted_entry.status = Status::Accepted;
-        store.append_pending(&pending_entry).unwrap();
-        store.append_pending(&accepted_entry).unwrap();
-        let pending_only = store.pending_with_status(Status::Pending).unwrap();
-        assert_eq!(pending_only.len(), 1);
-        assert_eq!(pending_only[0].id, "p1");
-        let accepted_only = store.pending_with_status(Status::Accepted).unwrap();
-        assert_eq!(accepted_only.len(), 1);
-        assert_eq!(accepted_only[0].id, "a1");
     }
 
     #[test]
@@ -494,6 +561,66 @@ mod tests {
             .restore_snapshot(&entry, &project_root, &paths, &session_id)
             .unwrap_err();
         assert!(err.to_string().contains("has no snapshot_before"));
+    }
+
+    #[test]
+    fn finalize_appends_instead_of_rewriting() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.append_pending(&make_entry("02", 2)).unwrap();
+        store.append_pending(&make_entry("03", 3)).unwrap();
+
+        store.finalize("02", Status::Accepted).unwrap();
+
+        // pending.jsonl still has 3 lines (bare entries, unchanged).
+        let raw = fs::read_to_string(store.pending_path()).unwrap();
+        assert_eq!(raw.lines().count(), 3);
+
+        // pending_changes.jsonl has 1 line (the tombstone).
+        let changes_raw = fs::read_to_string(store.pending_changes_path()).unwrap();
+        assert_eq!(changes_raw.lines().count(), 1);
+
+        // list_pending filters out finalized entries.
+        let pending = store.list_pending().unwrap();
+        assert_eq!(pending.len(), 2);
+        assert!(pending.iter().all(|e| e.id != "02"));
+    }
+
+    #[test]
+    fn update_ledger_status_appends_to_changes() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.finalize("01", Status::Accepted).unwrap();
+        // ledger now has the entry with Accepted; change by prefix to Reverted.
+        store.update_ledger_status("01", Status::Reverted).unwrap();
+
+        // ledger.jsonl unchanged shape — just one entry.
+        let raw = fs::read_to_string(store.ledger_path()).unwrap();
+        assert_eq!(raw.lines().count(), 1);
+
+        // ledger_changes.jsonl has one change.
+        let changes_raw = fs::read_to_string(store.ledger_changes_path()).unwrap();
+        assert_eq!(changes_raw.lines().count(), 1);
+
+        let ledger = store.list_ledger().unwrap();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].status, Status::Reverted);
+    }
+
+    #[test]
+    fn multiple_status_changes_last_write_wins() {
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.finalize("01", Status::Accepted).unwrap();
+        store.update_ledger_status("01", Status::Reverted).unwrap();
+        store.update_ledger_status("01", Status::Edited).unwrap();
+
+        let ledger = store.list_ledger().unwrap();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].status, Status::Edited);
     }
 
     #[test]
