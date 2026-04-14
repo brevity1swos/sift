@@ -86,6 +86,12 @@ pub struct LedgerEntry {
 
 /// A status-change record for append-only status updates.
 /// Stored in pending_changes.jsonl or ledger_changes.jsonl.
+///
+/// **Ordering:** file order is authoritative for last-write-wins. The
+/// `timestamp` field is informational only (captured at write time with
+/// `Utc::now()`) and must not be used to re-order changes — clock skew,
+/// VM resume, or NTP correction can make timestamps disagree with the
+/// canonical append order.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StatusChange {
     pub id: String,

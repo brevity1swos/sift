@@ -225,6 +225,19 @@ impl Store {
     /// its new status) is appended to `ledger.jsonl`.
     ///
     /// Returns the entry as written, or Err if the id is not in pending.
+    ///
+    /// **Durability:** `append_ledger` runs before `append_change` so a crash
+    /// between the two leaves the entry duplicated (present in both files)
+    /// rather than lost. A future fsck/compaction pass can resolve duplicates;
+    /// a vanished entry cannot be recovered.
+    ///
+    /// **Concurrency & crash duplicates:** under two concurrent writers, or a
+    /// crash after `append_ledger` but before `append_change`, the ledger may
+    /// contain multiple rows for the same id (with potentially different
+    /// statuses). Readers must tolerate this: `list_ledger` returns both rows
+    /// and `apply_changes` folds last-write-wins across all matching rows, so
+    /// they all converge to the same status — but the physical file keeps
+    /// both. A future `sift fsck` / `sift gc --compact` command will dedupe.
     pub fn finalize(&self, id: &str, new_status: Status) -> Result<LedgerEntry> {
         let pending = self.list_pending()?;
         let entry = pending
@@ -621,6 +634,66 @@ mod tests {
         let ledger = store.list_ledger().unwrap();
         assert_eq!(ledger.len(), 1);
         assert_eq!(ledger[0].status, Status::Edited);
+    }
+
+    #[test]
+    fn orphan_change_for_nonexistent_id_is_ignored() {
+        // A change file that references an id not in the entries file must
+        // be silently tolerated — this happens transiently during concurrent
+        // reads/writes and after certain crash scenarios.
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+
+        // Manually inject an orphan change for an unknown id.
+        let orphan = StatusChange {
+            id: "nonexistent-99".to_string(),
+            new_status: Status::Accepted,
+            timestamp: Utc::now(),
+        };
+        fs::create_dir_all(td.path()).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(store.pending_changes_path())
+            .unwrap();
+        writeln!(f, "{}", serde_json::to_string(&orphan).unwrap()).unwrap();
+
+        // list_pending still returns the real entry untouched.
+        let pending = store.list_pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "01");
+        assert_eq!(pending[0].status, Status::Pending);
+    }
+
+    #[test]
+    fn edit_flow_preserves_existing_tombstones() {
+        // Regression: the TUI edit flow calls `rewrite_pending_entries` with
+        // a post-fold view. Verify that a prior finalize's tombstone in
+        // pending_changes.jsonl still filters the finalized entry out even
+        // after a rewrite_pending_entries on a DIFFERENT entry.
+        let td = TempDir::new().unwrap();
+        let store = Store::new(td.path());
+        store.append_pending(&make_entry("01", 1)).unwrap();
+        store.append_pending(&make_entry("02", 1)).unwrap();
+
+        // Finalize 01.
+        store.finalize("01", Status::Accepted).unwrap();
+
+        // Simulate TUI edit flow on 02: read, modify, rewrite.
+        let mut pending = store.list_pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "02");
+        if let Some(e) = pending.iter_mut().find(|e| e.id == "02") {
+            e.snapshot_after = Some("b".repeat(40));
+        }
+        store.rewrite_pending_entries(&pending).unwrap();
+
+        // After the rewrite, list_pending should still correctly exclude 01
+        // (its tombstone is still in pending_changes.jsonl).
+        let pending = store.list_pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "02");
     }
 
     #[test]
