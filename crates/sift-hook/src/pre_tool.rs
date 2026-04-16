@@ -105,6 +105,17 @@ pub fn run(event: HookEvent) -> Result<ExitCode> {
         target_path.to_path_buf()
     };
 
+    // Final safety net: the absolute-path branch above can — in the rare case
+    // where BOTH `canonicalize` calls fail and the fallback `strip_prefix` on
+    // non-canonical paths still succeeds against a target containing `..` —
+    // produce a `rel_path` with `ParentDir` components. That would let a
+    // prompt-injected absolute write path of the form
+    // `/<project_root>/../<sensitive>` leak the sensitive file's bytes into
+    // `.sift/snapshots/` via the upcoming `fs::read`. Reject such paths here.
+    if validate_relative_path(&rel_path).is_err() {
+        return Ok(ExitCode::from(0));
+    }
+
     // Policy check: evaluate the relative path against .sift/policy.yml.
     let policy = Policy::load(&paths.policy_file())?;
     match policy.evaluate(&rel_path) {
