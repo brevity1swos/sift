@@ -2,6 +2,14 @@
 //!
 //! Blobs are stored at `<session>/snapshots/<first-2>/<remaining-38>`.
 //! Store is write-once: writing the same content twice is a no-op.
+//!
+//! **Hash choice:** SHA-1 is used deliberately. Snapshots are session-scoped
+//! and non-adversarial — we need collision resistance against accidental
+//! corruption and an integrity check on read, not cryptographic second-preimage
+//! resistance. SHA-1 is cheap, 40 hex chars fit tidily in ledger paths, and
+//! `get()` quarantines any blob whose recomputed digest disagrees with its
+//! filename. Upgrading to SHA-256 would require a versioned blob path scheme
+//! and migration; revisit only if the threat model changes.
 
 use anyhow::{bail, Context, Result};
 use sha1::{Digest, Sha1};
