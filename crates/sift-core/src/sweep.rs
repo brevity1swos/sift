@@ -348,18 +348,23 @@ mod tests {
     fn detects_orphan_markdown() {
         let td = TempDir::new().unwrap();
         // Create a markdown file with a basename that isn't referenced anywhere.
-        std::fs::write(td.path().join("lonely.md"), "content").unwrap();
+        std::fs::write(td.path().join("lonely.md"), "this one stands alone").unwrap();
         // A referenced md file should NOT be flagged.
-        std::fs::write(td.path().join("referenced.md"), "content").unwrap();
+        std::fs::write(td.path().join("referenced.md"), "documented behavior").unwrap();
         std::fs::write(td.path().join("code.rs"), "// see referenced for details").unwrap();
 
+        // NOTE: file contents are deliberately distinct to keep fuzzy-dup
+        // detection from firing on identical-content fixtures — that would
+        // flag referenced.md as a fuzzy duplicate and suppress the orphan
+        // check we are trying to exercise here.
         let pending = vec![
             e("01", "lonely.md", Op::Create, Some("h1")),
             e("02", "referenced.md", Op::Create, Some("h2")),
         ];
         let c = detect(&pending, td.path()).unwrap();
-        assert_eq!(c.len(), 1);
+        assert_eq!(c.len(), 1, "got {} candidates: {:?}", c.len(), c);
         assert_eq!(c[0].entry_id, "01");
+        assert!(matches!(c[0].reason, SweepReason::OrphanMarkdown));
     }
 
     #[test]
@@ -403,14 +408,21 @@ mod tests {
     #[test]
     fn multiple_orphan_md_files_each_flagged() {
         let td = TempDir::new().unwrap();
-        std::fs::write(td.path().join("a.md"), "solo").unwrap();
-        std::fs::write(td.path().join("b.md"), "solo").unwrap();
+        // Use multi-char basenames so the needle for file A can't coincidentally
+        // be a substring of file B's content (and vice versa), AND content that
+        // is distinct so fuzzy-dup doesn't claim one of them and mask the
+        // orphan-markdown flag we are asserting on.
+        std::fs::write(td.path().join("alpha.md"), "one").unwrap();
+        std::fs::write(td.path().join("omega.md"), "two").unwrap();
         let pending = vec![
-            e("01", "a.md", Op::Create, Some("h1")),
-            e("02", "b.md", Op::Create, Some("h2")),
+            e("01", "alpha.md", Op::Create, Some("h1")),
+            e("02", "omega.md", Op::Create, Some("h2")),
         ];
         let c = detect(&pending, td.path()).unwrap();
-        assert_eq!(c.len(), 2);
+        assert_eq!(c.len(), 2, "got {} candidates: {:?}", c.len(), c);
+        assert!(c
+            .iter()
+            .all(|x| matches!(x.reason, SweepReason::OrphanMarkdown)));
         assert!(c.iter().any(|x| x.entry_id == "01"));
         assert!(c.iter().any(|x| x.entry_id == "02"));
     }
