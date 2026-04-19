@@ -8,21 +8,11 @@ use std::path::Path;
 
 use crate::config::Mode;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionState {
     pub turn: u32,
     pub mode: Mode,
     pub last_hook_ts: Option<DateTime<Utc>>,
-}
-
-impl Default for SessionState {
-    fn default() -> Self {
-        Self {
-            turn: 0,
-            mode: Mode::Loose,
-            last_hook_ts: None,
-        }
-    }
 }
 
 impl SessionState {
