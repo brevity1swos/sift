@@ -58,6 +58,10 @@ judgment *possible*, not to impose it — and not to automate it away.
   side-by-side) who want a shared review layer across tools.
 - **Eval engineers** doing supervised dataset collection — accept/revert
   becomes the labeling action, the ledger becomes the dataset.
+- **Agent-iteration developers** running prompt or config variants against
+  a fixed baseline and comparing per-file diffs across runs. Proposed
+  workflow; see Phase 4.5. Overlaps with eval engineers but pulls the UX
+  toward bulk comparison, not per-entry labeling.
 - **Teams dogfooding autonomous agents** who need to audit long unattended
   runs without re-committing after every turn.
 
@@ -437,6 +441,117 @@ export reviewed-only patches, gate CI on pending reviews.
 `sift export --format patch` produces a clean artifact.
 
 **Depends on:** Phase 3 (multi-tool coverage), agx Phase 3 (corpus infra).
+
+---
+
+## Phase 4.5 — v0.6.x: Comparison Mode (candidate, gated on Phase 1 validation)
+
+**Status: proposed 2026-04-19.** Candidate phase raised during the Phase 1
+dogfood conversation. Not on the critical path until the validation in
+Phase 1.4 lands and the audience evidence points this direction. Recorded
+here so the feature set doesn't get reinvented under a different name
+later.
+
+**Goal:** Let an agentic-workflow developer iterate on prompts / configs
+by running agent variants against a **fixed baseline** and comparing
+what each variant wrote. sift already has the substrate — content-
+addressed snapshots, per-turn ledger — to make the comparison cheap.
+What's missing is the UX for labeling runs, resetting to a baseline, and
+diffing across sessions.
+
+**Why this phase exists.** The "A/B a prompt" workflow is currently done
+ad hoc: `git reset --hard`, run the agent, `git diff`, `git reset --hard`
+again, tweak the prompt, re-run, compare by eye. sift's session dir
+already captures what each run wrote at per-file grain; with a small UX
+layer on top, sift becomes the tool that makes this iteration loop
+first-class.
+
+**Why candidate, not committed.** It pulls sift's audience away from
+"solo indie reviewing writes" toward "eval / prompt engineer running
+regression passes." Those two audiences share substrate but want
+different UX — indie users want fast per-entry keybinds, eval users want
+bulk filters + stats. Building this without the Phase 1 verdict risks
+scope dilution on both sides. Ship only if Phase 1.4 validates and real
+usage surfaces this specific pain.
+
+### Non-goals
+
+- **No statistical / aggregate analysis.** That's agx's domain (corpus
+  view, per-tool stats). Comparison mode surfaces the substrate; agx or
+  an external tool computes summaries.
+- **No automated "which variant was better" verdict.** Violates the
+  stepwise trial's human-in-the-loop principle (guiding principle #8).
+  Show both diffs; human decides.
+- **No CI gating on "variant A wrote fewer lines than B."** That is a
+  policy decision, not a sift decision. `sift export --format patch`
+  (Phase 4.3) is the CI-gating primitive.
+
+### Subplans
+
+**4.5.1 — Session labels**
+- [ ] `sift label <session> <tag>` assigns a short human-readable tag
+      (e.g., `prompt-v3`, `claude-4.6-baseline`). Stored in session
+      `meta.json` as `labels: Vec<String>` (`#[serde(default)]` for
+      back-compat).
+- [ ] `sift history --label <tag>` filters; `sift list --session <tag>`
+      resolves a tag to a session id for all existing commands.
+- [ ] No global uniqueness — tags are per-project organizational hints,
+      not primary keys.
+
+**4.5.2 — Baseline reset**
+- [ ] `sift reset --to <session-or-tag>` restores working-tree files to
+      the **pre-state** snapshots of the named session. Equivalent to
+      "revert all" at the working-tree grain but pinned to a specific
+      session's starting point.
+- [ ] `--dry-run` by default; `--apply` actually writes. Refuses if the
+      working tree has uncommitted non-sift changes (safety: don't clobber
+      the user's in-flight work).
+- [ ] Records a "reset marker" entry in the ledger so `sift log` tells
+      you a reset happened — otherwise the next session would start from
+      an apparently-mysterious clean state.
+
+**4.5.3 — Cross-session diff**
+- [ ] `sift diff --between <A> <B>` shows, per path, what session A did
+      vs what session B did to the same baseline. Output modes:
+      - unified diff (default, pipes to `$PAGER`)
+      - side-by-side TUI (reuses Phase 5.1's split-pane primitive)
+      - `--json` for downstream tooling
+- [ ] Only compares sessions with a common baseline — uses
+      `snapshot_before` equivalence to detect. If baselines diverge,
+      prints a clear error pointing at `sift reset`.
+- [ ] Handles the three asymmetry cases: A wrote, B didn't; B wrote, A
+      didn't; both wrote (diff the post-states).
+
+**4.5.4 — Workflow example in docs**
+- [ ] `docs/comparison-mode.md` walks through a full iteration loop:
+      baseline session, variant A, `sift reset --to baseline --apply`,
+      variant B, `sift diff --between A B`. Keeps the docs honest about
+      what the commands compose to in practice.
+
+### Dependencies
+
+- **Phase 1.4 validation must land in 'validated' or 'partial'** before
+  starting. If the `t` keybind thesis falsifies, sift shrinks to the
+  standalone review gate and Phase 4.5 is dropped.
+- **Phase 4.3 `sift export --format patch`** for CI-facing comparison.
+- **Phase 5.1 side-by-side diff TUI** (for the TUI-mode half of 4.5.3).
+
+### Acceptance
+
+A prompt-engineer iterating on a Claude Code system prompt can:
+1. Run their agent once at baseline — `sift label <id> baseline`.
+2. Tweak the prompt, run again — `sift label <id> v2`.
+3. `sift reset --to baseline --apply` to re-seed the working tree.
+4. Run a third variant — `sift label <id> v3`.
+5. `sift diff --between v2 v3` to see exactly what changed in the
+   agent's output between the two prompt versions, per file.
+
+### When to kill
+
+If Phase 1.4 falsifies (no agx synergy), sift stays a standalone review
+gate and this phase is dropped. If Phase 1.4 partially validates but
+dogfood never surfaces comparison-mode demand, keep it as a proposal
+indefinitely — don't build speculative features.
 
 ---
 
