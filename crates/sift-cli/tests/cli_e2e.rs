@@ -243,3 +243,52 @@ fn mode_strict_persists_in_config() {
         "config should contain 'strict', got: {content}"
     );
 }
+
+#[test]
+fn list_path_filter_keeps_only_matching_entries() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+
+    // Pre-create the subdirectories the hook will write into. The hook
+    // does not auto-create parent dirs because the host tool is the one
+    // doing the actual write.
+    fs::create_dir_all(td.path().join("src")).unwrap();
+    fs::create_dir_all(td.path().join("tests")).unwrap();
+    fs::create_dir_all(td.path().join("docs")).unwrap();
+
+    write_via_hook(&td, "src/a.rs", b"a");
+    write_via_hook(&td, "tests/b.rs", b"b");
+    write_via_hook(&td, "docs/c.md", b"c");
+
+    // Path filter `src` should match src/a.rs only — substring,
+    // case-insensitive, applied after the pending list is loaded.
+    let output = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--path", "src"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("src/a.rs"), "src/a.rs should appear: {stdout}");
+    assert!(
+        !stdout.contains("tests/b.rs"),
+        "tests/b.rs should be filtered out: {stdout}"
+    );
+    assert!(
+        !stdout.contains("docs/c.md"),
+        "docs/c.md should be filtered out: {stdout}"
+    );
+
+    // Case-insensitivity sanity check.
+    let output_upper = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--path", "DOCS"])
+        .output()
+        .unwrap();
+    let stdout_upper = String::from_utf8_lossy(&output_upper.stdout);
+    assert!(
+        stdout_upper.contains("docs/c.md"),
+        "uppercase --path DOCS should still match docs/: {stdout_upper}"
+    );
+}

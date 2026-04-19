@@ -38,6 +38,9 @@ enum Commands {
         turn: Option<u32>,
         #[arg(long)]
         session: Option<String>,
+        /// Filter entries whose path contains this substring (case-insensitive).
+        #[arg(long)]
+        path: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -45,6 +48,10 @@ enum Commands {
     Log {
         #[arg(long)]
         session: Option<String>,
+        /// Filter entries whose path contains this substring (case-insensitive).
+        /// Useful for "what happened to this file across all turns?"
+        #[arg(long)]
+        path: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -125,12 +132,17 @@ fn main() -> Result<ExitCode> {
             pending,
             turn,
             session,
+            path,
             json,
         }) => {
-            cmd_list::run(&cwd, pending, turn, session, json)?;
+            cmd_list::run(&cwd, pending, turn, session, path, json)?;
         }
-        Some(Commands::Log { session, json }) => {
-            cmd_log::run(&cwd, session, json)?;
+        Some(Commands::Log {
+            session,
+            path,
+            json,
+        }) => {
+            cmd_log::run(&cwd, session, path, json)?;
         }
         Some(Commands::Diff { id }) => {
             cmd_diff::run(&cwd, id)?;

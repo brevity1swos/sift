@@ -41,6 +41,8 @@ This creates the hook configuration and adds `.sift/` to `.gitignore`.
 ```sh
 sift                         # show session status (default command)
 sift ls                      # list pending entries
+sift ls --path src           # filter by path substring (case-insensitive)
+sift log --path README.md    # what happened to this file across all turns?
 sift d <id>                  # show unified diff (auto-pages with $PAGER)
 sift ok all                  # accept all pending
 sift undo all                # revert all pending

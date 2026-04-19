@@ -7,6 +7,7 @@ pub fn run(
     pending_only: bool,
     turn: Option<u32>,
     session: Option<String>,
+    path: Option<String>,
     json: bool,
 ) -> Result<()> {
     let dir = crate::resolve_session_dir(cwd, session)?;
@@ -20,6 +21,10 @@ pub fn run(
     };
     if let Some(t) = turn {
         entries.retain(|e| e.turn == t);
+    }
+    if let Some(needle) = path.as_deref() {
+        let needle = needle.to_lowercase();
+        entries.retain(|e| e.path.to_string_lossy().to_lowercase().contains(&needle));
     }
     entries.sort_by_key(|e| e.timestamp);
     if json {
