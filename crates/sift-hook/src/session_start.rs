@@ -9,6 +9,9 @@ use crate::payload::HookEvent;
 pub fn run(event: HookEvent) -> Result<()> {
     let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
     let paths = Paths::new(project_root);
-    let _session = Session::create(paths)?;
+    // Record the host agent's transcript path so `sift review` can hand off
+    // to agx on the same session via the `t` keybind (suite-conventions §5).
+    // Absent transcript_path is legal — degrades the `t` keybind, nothing else.
+    let _session = Session::create_with_transcript(paths, event.transcript_path)?;
     Ok(())
 }

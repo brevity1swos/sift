@@ -132,6 +132,7 @@ mod tests {
             cwd: PathBuf::from("/tmp/test"),
             started_at,
             ended_at,
+            transcript_path: None,
         };
         let text = serde_json::to_string_pretty(&meta).unwrap();
         fs::write(dir.join("meta.json"), text).unwrap();

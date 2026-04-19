@@ -5,6 +5,8 @@ use std::process::ExitCode;
 
 mod cmd_accept;
 mod cmd_diff;
+mod cmd_doctor;
+mod cmd_fsck;
 mod cmd_gc;
 mod cmd_history;
 mod cmd_init;
@@ -92,6 +94,24 @@ enum Commands {
         #[arg(long, default_value = "claude")]
         tool: String,
     },
+    /// Report sift version, sibling-tool detection (agx, rgx), and stepwise suite integration status.
+    Doctor {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check (or repair) ledger JSONL integrity: truncated tails, duplicate ids, orphan tombstones.
+    Fsck {
+        /// Session id to check. Defaults to the current session.
+        #[arg(long)]
+        session: Option<String>,
+        /// Archive corrupted files to `.bad.<ulid>` and write cleaned replacements.
+        /// Refuses to run on open sessions.
+        #[arg(long)]
+        repair: bool,
+        /// Emit machine-readable JSON instead of the default text report.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> Result<ExitCode> {
@@ -159,6 +179,17 @@ fn main() -> Result<ExitCode> {
         }
         Some(Commands::Init { global, tool }) => {
             cmd_init::run(&cwd, global, &tool)?;
+        }
+        Some(Commands::Doctor { json }) => {
+            cmd_doctor::run(&cwd, json)?;
+        }
+        Some(Commands::Fsck {
+            session,
+            repair,
+            json,
+        }) => {
+            let code = cmd_fsck::run(&cwd, session, repair, json)?;
+            return Ok(ExitCode::from(code));
         }
     }
     Ok(ExitCode::from(0))

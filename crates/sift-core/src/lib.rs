@@ -1,9 +1,11 @@
 //! sift-core: session lifecycle, ledger store, snapshots, diff, sweep.
 
+pub mod agx;
 pub mod config;
 pub mod correlation;
 pub mod diff;
 pub mod entry;
+pub mod fsck;
 pub mod gc;
 pub mod paths;
 pub mod policy;

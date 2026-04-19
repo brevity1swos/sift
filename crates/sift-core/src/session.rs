@@ -17,6 +17,13 @@ pub struct SessionMeta {
     pub cwd: PathBuf,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
+    /// Path to the host agent's session transcript (Claude Code JSONL,
+    /// Gemini session file, etc.) as reported by the SessionStart hook.
+    /// Enables the `sift review` → `t` keybind to hand off to agx on the
+    /// same session. Optional + `#[serde(default)]` so pre-v0.3 sessions
+    /// still round-trip cleanly.
+    #[serde(default)]
+    pub transcript_path: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -34,6 +41,13 @@ impl Session {
     /// created in the same second), append `-1`, `-2`, ... until a free slot
     /// is found. This prevents silent stomping of an existing session dir.
     pub fn create(paths: Paths) -> Result<Self> {
+        Self::create_with_transcript(paths, None)
+    }
+
+    /// Create a new session and record the host agent's transcript path so
+    /// the `sift review` → `t` keybind can hand off to agx on the same
+    /// session later. `None` is equivalent to `create()`.
+    pub fn create_with_transcript(paths: Paths, transcript_path: Option<PathBuf>) -> Result<Self> {
         let started_at = Utc::now();
         let base_id = started_at.format("%Y-%m-%d-%H%M%S").to_string();
         let (id, dir) = Self::reserve_unique_dir(&paths, &base_id)?;
@@ -54,6 +68,7 @@ impl Session {
             cwd: paths.project_root().to_path_buf(),
             started_at,
             ended_at: None,
+            transcript_path,
         };
         write_json_atomic(&dir.join("meta.json"), &meta)?;
 

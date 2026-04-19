@@ -21,7 +21,7 @@ pub fn run(
     if let Some(t) = turn {
         entries.retain(|e| e.turn == t);
     }
-    entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    entries.sort_by_key(|e| e.timestamp);
     if json {
         println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {
