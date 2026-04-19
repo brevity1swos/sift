@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 
 pub fn run(cwd: &Path, entry_id: String) -> Result<()> {
     let paths = Paths::new(cwd);
-    let session = Session::open_current(Paths::new(cwd))?;
+    let session = Session::open_current(paths.clone())?;
     let store = Store::new(&session.dir);
     let mut all = store.list_pending()?;
     all.extend(store.list_ledger()?);

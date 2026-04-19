@@ -9,12 +9,12 @@ pub fn run(cwd: &Path, target: String) -> Result<()> {
     let pending = store.list_pending()?;
     let ids = resolve_target_ids(&pending, &target);
     if ids.is_empty() {
-        match target.as_str() {
-            "all" => println!("sift: nothing to accept"),
-            t if parse_turn(t).is_some() => {
-                println!("sift: no pending entries on turn {}", parse_turn(t).unwrap());
-            }
-            _ => println!("sift: no pending entries match '{target}'"),
+        if target == "all" {
+            println!("sift: nothing to accept");
+        } else if let Some(n) = parse_turn(&target) {
+            println!("sift: no pending entries on turn {n}");
+        } else {
+            println!("sift: no pending entries match '{target}'");
         }
         return Ok(());
     }
@@ -37,20 +37,20 @@ pub(crate) fn is_bulk_target(target: &str) -> bool {
 }
 
 pub(crate) fn resolve_target_ids(entries: &[LedgerEntry], target: &str) -> Vec<String> {
-    match target {
-        "all" => entries.iter().map(|e| e.id.clone()).collect(),
-        t if parse_turn(t).is_some() => {
-            let n = parse_turn(t).unwrap();
-            entries
-                .iter()
-                .filter(|e| e.turn == n)
-                .map(|e| e.id.clone())
-                .collect()
-        }
-        prefix => entries
-            .iter()
-            .filter(|e| e.id.starts_with(prefix))
-            .map(|e| e.id.clone())
-            .collect(),
+    if target == "all" {
+        return entries.iter().map(|e| e.id.clone()).collect();
     }
+    if let Some(n) = parse_turn(target) {
+        return entries
+            .iter()
+            .filter(|e| e.turn == n)
+            .map(|e| e.id.clone())
+            .collect();
+    }
+    // Treat anything else as an id prefix.
+    entries
+        .iter()
+        .filter(|e| e.id.starts_with(target))
+        .map(|e| e.id.clone())
+        .collect()
 }
