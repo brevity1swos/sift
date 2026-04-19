@@ -428,9 +428,18 @@ where
     Ok(out)
 }
 
+/// Maximum bytes per ledger record. Real entries are well under 8 KB
+/// (ULID + a few path strings + small JSON metadata). 1 MB is generous
+/// for any plausible legitimate record, while still bounding memory if a
+/// corrupt or pathological file omits newlines for gigabytes.
+const MAX_RECORD_BYTES: usize = 1024 * 1024;
+
 /// Read bytes up to and including the next `\n` into `buf`. On EOF with
 /// partial data, returns what was read — caller checks the last byte to
 /// distinguish "clean line" from "truncated tail."
+///
+/// Returns an error if a single record exceeds `MAX_RECORD_BYTES`,
+/// preventing OOM on a corrupt file with no newlines.
 fn read_until_newline<R: Read>(reader: &mut R, buf: &mut Vec<u8>) -> Result<usize> {
     let mut byte = [0u8; 1];
     let mut count = 0;
@@ -442,6 +451,12 @@ fn read_until_newline<R: Read>(reader: &mut R, buf: &mut Vec<u8>) -> Result<usiz
                 count += 1;
                 if byte[0] == b'\n' {
                     return Ok(count);
+                }
+                if count > MAX_RECORD_BYTES {
+                    anyhow::bail!(
+                        "ledger record exceeded {} bytes without a newline — refusing to read further (file may be corrupt or adversarial)",
+                        MAX_RECORD_BYTES
+                    );
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
