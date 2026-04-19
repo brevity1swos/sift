@@ -289,12 +289,16 @@ opportunistically when the affected code changes for other reasons.
 
 | Item | Target | Current | Notes |
 |---|---|---|---|
-| sift accept key | `Enter` / `Space` | `a` | Free up `a` for annotate (§1 row "annotate"). |
-| sift annotate key | `a` | `n` | Align with agx; frees `n` for next-search-match. |
-| sift search | `/` + `n`/`N` | none | Add to `sift review` TUI to match agx. |
-| agx `doctor` | report siblings | not shipped | Retrofit from sift's `doctor` design when sift ships it. |
+| agx `doctor` | report siblings | not shipped | Retrofit from sift's `doctor` design (shipped v0.3). |
 | rgx `doctor` | report siblings | not shipped | Same. |
 | agx `--summary` on sift integration | list sift ledger status | no sift awareness | Deferred per rule 5 (one-way coupling). Revisit only if sift validates and users ask. |
+
+**Closed (shipped):**
+
+- sift accept key (`Enter` / `Space`): additive alias shipped v0.3;
+  legacy `a`=accept removed in v0.4. Recorded in §1.
+- sift annotate key (`a`): flipped from `n` in v0.4. Recorded in §1.
+- sift search (`/` + `n` / `N`): added in v0.4. Recorded in §1.
 
 ---
 

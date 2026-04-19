@@ -1,4 +1,8 @@
 //! Keybinding dispatch.
+//!
+//! Keymap is aligned with `docs/suite-conventions.md` §1 as of v0.4. The
+//! v0.3 compatibility alias (`a` still accepts) has been removed; `a` now
+//! opens the annotate prompt, matching agx.
 
 use crossterm::event::{KeyCode, KeyEvent};
 
@@ -7,26 +11,23 @@ use crate::app::{App, InputMode};
 pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
     match app.input_mode {
         InputMode::Annotating => handle_annotating(app, key),
+        InputMode::Searching => handle_searching(app, key),
         InputMode::Normal => handle_normal(app, key),
     }
 }
 
 fn handle_normal(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
-    // Any keypress dismisses a stale one-shot status message. The `t`
-    // branch below may re-set it for this same keypress; all other
-    // branches leave it cleared.
+    // Any keypress dismisses a stale one-shot status message. Branches
+    // below may re-set it for this same keypress.
     app.status_msg = None;
 
     match key.code {
         KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('j') | KeyCode::Down => app.cursor_down(),
         KeyCode::Char('k') | KeyCode::Up => app.cursor_up(),
-        // Accept. `Enter` and `Space` are the suite-conventions §1
-        // primaries; `a` is retained for one release as a non-breaking
-        // compatibility alias. In v0.4 the full keymap migration moves
-        // `a` to annotate — see docs/superpowers/plans/
-        // 2026-04-19-phase1-agx-synergy.md Task C1.
-        KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('a') => {
+        // Accept: suite-conventions §1 primary. `a` no longer accepts as
+        // of v0.4 (the v0.3 deprecation window is done).
+        KeyCode::Enter | KeyCode::Char(' ') => {
             if let Some(e) = app.current() {
                 let id = e.id.clone();
                 let store = sift_core::store::Store::new(&app.session_dir);
@@ -47,9 +48,9 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
                 app.edit_request = Some(e.id.clone());
             }
         }
-        KeyCode::Char('n') => {
-            // Enter annotation mode for the current entry.
-            // Clone values before mutating app to satisfy the borrow checker.
+        // Annotate. Moved from `n` to `a` in v0.4 per suite-conventions
+        // §1 (aligns with agx's annotation key).
+        KeyCode::Char('a') => {
             if let Some(e) = app.current() {
                 let id = e.id.clone();
                 let rationale = e.rationale.clone();
@@ -58,10 +59,27 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
                 app.input_mode = InputMode::Annotating;
             }
         }
+        // Search: `/` prompts, `n`/`N` cycle the last query's matches.
+        // Adds the conventions §1 search-verbs row.
+        KeyCode::Char('/') => {
+            app.input_buf.clear();
+            app.input_mode = InputMode::Searching;
+        }
+        // Match guards intentionally call `cycle_search` for its side
+        // effect: the cursor moves when the call returns true; when false
+        // (no active search), the arm body fires the hint. Behaves
+        // identically to a wrapping `if !cycle` inside the arm body and
+        // keeps clippy's `collapsible_if` happy.
+        KeyCode::Char('n') if !app.cycle_search(1) => {
+            app.status_msg =
+                Some("no active search — press `/` to search entries".into());
+        }
+        KeyCode::Char('N') if !app.cycle_search(-1) => {
+            app.status_msg =
+                Some("no active search — press `/` to search entries".into());
+        }
         // Suite-conventions §1 cross-tool key: `t` hands off to agx on the
-        // current session's transcript. Feature-detected per §6 rule 2 —
-        // if agx is missing or the transcript wasn't recorded (pre-v0.3
-        // session), set a status message instead of crashing.
+        // current session's transcript. Feature-detected per §6 rule 2.
         KeyCode::Char('t') => {
             if sift_core::agx::detect().is_none() {
                 app.status_msg = Some(
@@ -74,7 +92,6 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
                         .to_string(),
                 );
             } else {
-                // Main loop picks this up and suspends the TUI to run agx.
                 app.jump_to_agx_request = true;
             }
         }
@@ -117,6 +134,32 @@ fn handle_annotating(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn handle_searching(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
+    match key.code {
+        KeyCode::Enter => {
+            // Commit the query and jump to first match (or surface
+            // "no matches" if the query found nothing).
+            let q = std::mem::take(&mut app.input_buf);
+            if !app.commit_search(&q) && !q.is_empty() {
+                app.status_msg = Some(format!("no matches for /{q}"));
+            }
+            app.input_mode = InputMode::Normal;
+        }
+        KeyCode::Esc => {
+            app.input_buf.clear();
+            app.input_mode = InputMode::Normal;
+        }
+        KeyCode::Backspace => {
+            app.input_buf.pop();
+        }
+        KeyCode::Char(c) => {
+            app.input_buf.push(c);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,12 +179,12 @@ mod tests {
         }
     }
 
-    fn seed_pending(session_dir: &std::path::Path, id: &str) {
+    fn seed_entry(session_dir: &std::path::Path, id: &str, path: &str) {
         let entry = LedgerEntry {
             id: id.to_string(),
             turn: 1,
             tool: Tool::Write,
-            path: "src/x.rs".into(),
+            path: path.into(),
             op: Op::Create,
             rationale: String::new(),
             diff_stats: DiffStats {
@@ -156,19 +199,15 @@ mod tests {
         Store::new(session_dir).append_pending(&entry).unwrap();
     }
 
-    /// Verify that pressing `key_code` on a pending entry finalizes it to
-    /// Accepted. Used to exercise each of the three accept-equivalent keys
-    /// (Enter, Space, 'a') per suite-conventions §1 + §10 retrofit.
     fn assert_accept_key_works(key_code: KeyCode) {
         let td = TempDir::new().unwrap();
         let id = "01HVXK5QZ9G7B2A00000ACCEPT";
-        seed_pending(td.path(), id);
+        seed_entry(td.path(), id, "src/x.rs");
         let mut app = App::new(td.path()).unwrap();
         assert_eq!(app.entries.len(), 1);
 
         handle_key(&mut app, key(key_code)).unwrap();
 
-        // After accept, pending is empty and the entry is in the ledger.
         assert_eq!(app.entries.len(), 0, "pending should be empty after accept");
         let ledger = Store::new(td.path()).list_ledger().unwrap();
         assert_eq!(ledger.len(), 1);
@@ -186,16 +225,32 @@ mod tests {
     }
 
     #[test]
-    fn legacy_a_still_accepts_current_entry() {
-        // During the v0.3 migration window, `a` remains bound to accept for
-        // compatibility. Remove this test when v0.4 flips `a` to annotate.
-        assert_accept_key_works(KeyCode::Char('a'));
+    fn a_no_longer_accepts_in_v04() {
+        // Verifies the v0.3 deprecation window is closed: pressing `a`
+        // now opens the annotation prompt, not the accept path.
+        let td = TempDir::new().unwrap();
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000NOTACC", "src/x.rs");
+        let mut app = App::new(td.path()).unwrap();
+        handle_key(&mut app, key(KeyCode::Char('a'))).unwrap();
+        // Still pending (not accepted), and we're now in Annotating mode.
+        assert_eq!(app.entries.len(), 1);
+        assert_eq!(app.input_mode, InputMode::Annotating);
+    }
+
+    #[test]
+    fn a_opens_annotation_prompt() {
+        let td = TempDir::new().unwrap();
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000ANNOTT", "src/x.rs");
+        let mut app = App::new(td.path()).unwrap();
+        handle_key(&mut app, key(KeyCode::Char('a'))).unwrap();
+        assert_eq!(app.input_mode, InputMode::Annotating);
+        assert!(app.annotating_id.is_some());
     }
 
     #[test]
     fn revert_still_works() {
         let td = TempDir::new().unwrap();
-        seed_pending(td.path(), "01HVXK5QZ9G7B2A00000REVERT");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000REVERT", "src/x.rs");
         let mut app = App::new(td.path()).unwrap();
         handle_key(&mut app, key(KeyCode::Char('r'))).unwrap();
         assert_eq!(app.entries.len(), 0);
@@ -213,13 +268,118 @@ mod tests {
     }
 
     #[test]
+    fn slash_enters_search_mode() {
+        let td = TempDir::new().unwrap();
+        let mut app = App::new(td.path()).unwrap();
+        handle_key(&mut app, key(KeyCode::Char('/'))).unwrap();
+        assert_eq!(app.input_mode, InputMode::Searching);
+        assert!(app.input_buf.is_empty());
+    }
+
+    #[test]
+    fn search_commit_jumps_to_first_match() {
+        let td = TempDir::new().unwrap();
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000001", "src/a.rs");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000002", "tests/b.rs");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000003", "src/c.rs");
+        let mut app = App::new(td.path()).unwrap();
+        assert_eq!(app.cursor, 0);
+
+        // Simulate "/tests<Enter>".
+        handle_key(&mut app, key(KeyCode::Char('/'))).unwrap();
+        for c in "tests".chars() {
+            handle_key(&mut app, key(KeyCode::Char(c))).unwrap();
+        }
+        handle_key(&mut app, key(KeyCode::Enter)).unwrap();
+
+        assert_eq!(app.input_mode, InputMode::Normal);
+        assert_eq!(app.cursor, 1, "cursor should jump to tests/b.rs at index 1");
+        assert_eq!(app.search_matches, vec![1]);
+    }
+
+    #[test]
+    fn n_and_shift_n_cycle_matches_after_search() {
+        let td = TempDir::new().unwrap();
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000001", "src/one.rs");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000002", "src/two.rs");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000003", "docs/three.md");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000004", "src/four.rs");
+        let mut app = App::new(td.path()).unwrap();
+
+        // Search for "src" → matches at indices 0, 1, 3.
+        handle_key(&mut app, key(KeyCode::Char('/'))).unwrap();
+        for c in "src".chars() {
+            handle_key(&mut app, key(KeyCode::Char(c))).unwrap();
+        }
+        handle_key(&mut app, key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.cursor, 0);
+        assert_eq!(app.search_matches, vec![0, 1, 3]);
+
+        handle_key(&mut app, key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.cursor, 1);
+        handle_key(&mut app, key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.cursor, 3);
+        handle_key(&mut app, key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.cursor, 0, "wraps around to first match");
+
+        handle_key(&mut app, key(KeyCode::Char('N'))).unwrap();
+        assert_eq!(app.cursor, 3, "shift-N wraps backward");
+    }
+
+    #[test]
+    fn n_without_active_search_surfaces_hint() {
+        let td = TempDir::new().unwrap();
+        let mut app = App::new(td.path()).unwrap();
+        handle_key(&mut app, key(KeyCode::Char('n'))).unwrap();
+        assert!(app
+            .status_msg
+            .as_deref()
+            .map(|m| m.contains("no active search"))
+            .unwrap_or(false));
+    }
+
+    #[test]
+    fn search_escape_cancels_without_jumping() {
+        let td = TempDir::new().unwrap();
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000001", "src/a.rs");
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000002", "src/b.rs");
+        let mut app = App::new(td.path()).unwrap();
+        app.cursor = 1; // start pointing at b.rs
+
+        handle_key(&mut app, key(KeyCode::Char('/'))).unwrap();
+        for c in "a.rs".chars() {
+            handle_key(&mut app, key(KeyCode::Char(c))).unwrap();
+        }
+        handle_key(&mut app, key(KeyCode::Esc)).unwrap();
+
+        assert_eq!(app.input_mode, InputMode::Normal);
+        assert_eq!(app.cursor, 1, "Esc must not move cursor");
+        assert!(app.search_matches.is_empty());
+    }
+
+    #[test]
+    fn no_match_query_surfaces_status_msg() {
+        let td = TempDir::new().unwrap();
+        seed_entry(td.path(), "01HVXK5QZ9G7B2A00000000001", "src/a.rs");
+        let mut app = App::new(td.path()).unwrap();
+
+        handle_key(&mut app, key(KeyCode::Char('/'))).unwrap();
+        for c in "zzzz".chars() {
+            handle_key(&mut app, key(KeyCode::Char(c))).unwrap();
+        }
+        handle_key(&mut app, key(KeyCode::Enter)).unwrap();
+
+        assert_eq!(app.input_mode, InputMode::Normal);
+        assert_eq!(app.cursor, 0);
+        assert!(app
+            .status_msg
+            .as_deref()
+            .map(|m| m.contains("no matches"))
+            .unwrap_or(false));
+    }
+
+    #[test]
     fn t_key_surfaces_missing_transcript_when_agx_present() {
-        // If agx is on PATH but meta.json has no transcript_path, the `t`
-        // key should set a helpful status message, not crash or blindly
-        // spawn. We can only exercise this branch on a machine where
-        // agx::detect() returns Some — otherwise the earlier "agx not on
-        // PATH" branch wins. Accept either outcome; both are correct
-        // graceful-degrade paths per suite-conventions §6 rule 2.
         let td = TempDir::new().unwrap();
         let mut app = App::new(td.path()).unwrap();
         handle_key(&mut app, key(KeyCode::Char('t'))).unwrap();
@@ -240,8 +400,6 @@ mod tests {
         let td = TempDir::new().unwrap();
         let mut app = App::new(td.path()).unwrap();
         app.status_msg = Some("old hint".into());
-        // `j` (cursor-down) is not `t` and not anything that sets a new
-        // message; it should reach the catch-all arm and clear the hint.
         handle_key(&mut app, key(KeyCode::Char('j'))).unwrap();
         assert!(app.status_msg.is_none());
     }

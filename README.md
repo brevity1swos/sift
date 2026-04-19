@@ -67,19 +67,23 @@ sift fsck --json             # machine-readable fsck report
 | Key | Action |
 |-----|--------|
 | `j`/`k` | navigate entries |
-| `Enter` / `Space` | accept current entry (suite-conventions primary) |
-| `a` | accept current entry (legacy — moves to annotate in v0.4) |
+| `Enter` / `Space` | accept current entry |
 | `r` | revert current entry |
 | `e` | edit post-state in `$EDITOR` before accepting |
-| `n` | annotate entry with a note |
+| `a` | annotate entry with a note |
+| `/` | search entries by path (Enter jumps to first match, Esc cancels) |
+| `n` / `N` | cycle to next / previous search match |
 | `t` | hand off to agx on this session's transcript (feature-detected) |
 | `q` | quit |
+
+Keys align with the [stepwise suite conventions](docs/suite-conventions.md)
+so `a` / `/` / `n` / `N` mean the same thing across rgx, agx, and sift.
 
 The `t` keybind requires [agx](https://github.com/brevity1swos/agx)
 on `PATH`. When agx is missing, `t` shows a one-line install hint in
 the status bar instead of failing. Session-level jump only — agx
 0.1.x does not ship `--jump-to <path>:<step>` yet; the user navigates
-to the relevant turn inside agx with `:N` or `/` search.
+to the relevant turn inside agx with `:N` or its own `/` search.
 
 ## Policy
 
