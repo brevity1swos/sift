@@ -102,6 +102,22 @@ Rules are evaluated top-to-bottom; first match wins. Default is `allow`.
 3. **Slop pattern** — filenames matching `*_v2`, `*_new`, `*_final`, `scratch_*`, `tmp_*`, etc.
 4. **Orphan markdown** — new `.md` files whose basename isn't referenced by any other project file
 
+## Pairs well with
+
+- **[rgx](https://github.com/brevity1swos/rgx)** — terminal regex
+  debugger. Sift will use rgx for interactive policy-rule debugging
+  (planned, v0.4): iterate on a `.sift/policy.yml` pattern with
+  step-through visibility before committing the rule.
+- **[agx](https://github.com/brevity1swos/agx)** — terminal agent
+  session viewer. Sift's `t` keybind in `sift review` opens agx at
+  the turn that produced the selected write (planned, v0.3), so
+  review decisions carry full timeline context.
+
+All three tools are independent — each earns its keep alone. Combined,
+they form **[stepwise](https://github.com/brevity1swos/stepwise)**,
+the terminal-native step-through debugger stack for the AI-development
+workflow.
+
 ## License
 
 MIT OR Apache-2.0

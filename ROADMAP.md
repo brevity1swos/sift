@@ -26,14 +26,29 @@ stack: agx for observability, sift for action.
 This repositioning has two concrete consequences for the roadmap:
 
 1. **Integration with agx is the load-bearing phase (Phase 1).** The
-   review-while-replaying UX — step through agx's timeline and accept/revert
-   inline at each write — is the one workflow git genuinely cannot replicate.
-   If this lights up, sift has a product. If it doesn't, kill sift and
-   recommend agx + commit-discipline instead.
-2. **Standalone sift features get deprioritized.** Anything that doesn't move
-   sift closer to the agx-integrated review flow is polish. We ship the
-   integration first, see if the thesis holds, then decide whether the
-   standalone surface (policy, sweep, init) deserves continued investment.
+   jump-to-timeline UX — press `t` on any pending write to see the full
+   turn context in agx, then return to sift to accept / revert — is the
+   one workflow git genuinely cannot replicate. If this lights up, sift
+   has a product beyond its standalone surface. If it doesn't, kill the
+   integration ambition and let sift live or die on the standalone
+   review gate alone.
+2. **Standalone sift stays intact.** Policy, sweep, init, the hook
+   shims, and the accept/revert ledger remain first-class. The agx
+   integration adds value when agx is installed but never subtracts
+   when it's absent. sift and agx ship as two distinct tools with their
+   own repos, their own release trains, and their own audiences; the
+   synergy when both are installed is discovered, not required.
+
+**Why this matters beyond sift.** The three brevity1swos tools (rgx, agx,
+sift) compose into **stepwise** — a trial of a specific hypothesis: *can
+humans keep control over an automated agentic workflow without paying the
+efficiency of that workflow for it?* sift is where the trial gets stressed
+hardest. If review friction bleeds into the agent's end-to-end cycle, users
+skip the review and the hypothesis falsifies in real use rather than on
+paper. Every sift design choice is pinned to that constraint: terminal-
+native (no browser switch), feature-detected integrations (missing siblings
+never block flow), fast startup, opt-in strict mode. Review exists to make
+judgment *possible*, not to impose it — and not to automate it away.
 
 **Who it serves.** A narrower audience than agx:
 
@@ -67,6 +82,12 @@ engineers with internal tooling, devs comfortable with `git add -p`.
    AI writes); agx does one thing (timeline viewer); rgx does one thing
    (regex debugger). The suite's power is their intersection, not any one
    tool's feature list.
+8. **Human judgment is the point; automation of recognition is a regression.**
+   sift exposes writes for a human to review. It does not classify writes
+   as "safe" and auto-accept them by heuristic. It does not replace the
+   diff with an AI-generated summary of the diff. If a future feature
+   would bypass or pre-digest the review gate, it fails the stepwise
+   trial's stated hypothesis even if it ships faster — cut it.
 
 ---
 
@@ -115,94 +136,169 @@ dashboard, any replacement for git.
 
 ---
 
-## Phase 1 — v0.3: Agx Integration (the killer feature)
+## Phase 1 — v0.3: agx synergy (opt-in, feature-detected)
 
-**Goal:** Validate the sift-as-agx-sibling thesis. Ship the minimum viable
-integration, test whether review-while-replaying feels transformative in real
-use, decide whether to invest further or sunset sift.
+**Goal:** Make sift materially better when agx is also installed, without
+requiring it and without changing agx. Validate whether the combined flow
+— *agx shows you what happened, sift gates what you keep* — feels
+load-bearing in real use. If yes, continue with the rest of the roadmap.
+If no, drop the integration ambition and let sift live or die on the
+standalone review gate.
 
-**Why this first, nothing else matters until this lands:** standalone sift
-is marginal. sift + agx is the product. The roadmap past Phase 1 is
-contingent on Phase 1 results — phases 2+ only get built if the integration
-validates the thesis.
+**Why this first:** standalone sift is a review gate with independent
+value (policy, sweep, accept/revert, ledger, multi-tool write capture).
+But the thesis — that agx and sift together change how review feels — is
+the one claim that justifies the cross-tool coordination investment.
+Until that claim is tested on real sessions, there's no point building
+out the deeper integration work.
+
+### Non-goals
+
+- No agx code changes. agx is agx; sift consumes its CLI, nothing more.
+- No shared library crate. Integration is process-boundary only.
+- No removal of sift's built-in Claude / Gemini / Cline payload shims.
+  They stay as the fallback path when agx isn't installed.
+- No intercept-style coupling where agx signals back into sift. The two
+  tools compose at the subprocess boundary, nothing deeper.
 
 ### Subplans
 
-**1.1 — Shared session parsing (blocked on agx Phase 7.1)**
-- [ ] Depend on `agx-core` once it ships as a workspace crate from the agx
-      repo (agx roadmap Phase 7.1)
-- [ ] Replace `sift-hook/src/post_tool.rs:239` transcript rationale
-      extractor with `agx_core::Step::rationale_for(tool_use_id)`
-- [ ] Replace ad-hoc Claude/Gemini/Cline payload parsing in `sift-hook`
-      with agx-core's format-aware Step model
-- [ ] If agx Phase 7.1 slips, do a local copy of `agx-core`'s parser
-      modules as an interim; delete when agx ships the crate
+**1.1 — Feature-detect agx**
+- [ ] On sift startup, probe for `agx` on `PATH` and record its version
+- [ ] `sift doctor` subcommand reports agx presence, version, and
+      whether `agx --export json --version` matches the minimum
+      supported schema
+- [ ] All agx-dependent features gracefully degrade when agx is absent:
+      status-bar hint, never a hard failure
 
-**Rationale for depending on agx:** sift currently reinvents agent-session
-parsing. This is the largest single source of bugs and format-drift churn.
-Outsourcing it to a crate whose sole job is correct parsing is a pure win.
+**1.2 — Subprocess-powered rationale extraction** — **DEFERRED (upstream blocker, 2026-04-19)**
+- [x] **Blocker found:** agx's serialized `Step` (in
+      `agx/src/timeline.rs`) does not carry `tool_use_id` — the field is
+      used internally for tool_use↔tool_result pairing and dropped before
+      serialization. `agx --export json` output therefore cannot be
+      joined with sift's `HookEvent.tool_use_id`. Attribution-by-proximity
+      would work only coincidentally.
+- [ ] **Options** (none on Phase 1's critical path):
+      (a) agx adds `tool_use_id` to `StepKind::ToolUse` serialization —
+      cheapest, requires conventions §5 bump and an agx release.
+      (b) sift grows its own session parser — duplicates agx; cut.
+      (c) ship only the shim — honest, no regression. **Chosen for
+      Phase 1.**
+- [ ] Revisit only if a dogfood session surfaces a specific
+      rationale-quality complaint the shim cannot address. The shim's
+      "last assistant text" heuristic is close to agx's "assistant text
+      preceding the tool call" in practice because the hook fires
+      within microseconds of the tool call.
 
-**1.2 — Cross-launch (cheap, big UX win)**
-- [ ] `sift review` accepts `--open-in-agx` flag: selecting an entry in the
-      TUI launches `agx --jump-to <session>:<step>` in a subprocess
-- [ ] Sift TUI gains `t` (timeline) keybind: open agx at the turn that
-      produced the selected write, return to sift on exit
-- [ ] Agx TUI gains `r` (review) keybind on Write/Edit steps: shells out to
-      `sift review --entry <id>` (requires agx side changes — file a PR
-      upstream)
-- [ ] Implementation: each tool passes `--jump-to <session_id>:<step_index>`
-      via env or flag; no tight coupling, subprocess boundary is the API
+**1.3 — `t` keybind: jump to agx timeline**
+- [ ] `sift review` TUI adds a `t` action on the selected entry that
+      spawns agx as a subprocess. **Honest initial scope is session-
+      level jump** — agx currently exposes no `--jump-to <session>:<step>`
+      CLI flag (verified 2026-04-19: only in-TUI `:N` and `jump_to_mark`
+      exist). sift's `t` opens `agx <session-file>` and the user
+      navigates with `:N` / `n`. Don't claim step-level precision the
+      upstream binary can't deliver.
+- [ ] On agx exit, sift TUI restores state (entry selection, scroll,
+      mode)
+- [ ] When agx is absent, `t` shows an install hint in the status bar
+      pointing at agx's install docs
+- [ ] Help overlay documents the keybind and the soft dependency
+- [ ] **Upstream tracking:** step-level jump naturally lands alongside
+      agx's Phase 5 replay / branch work. Don't lobby agx to add it —
+      the integration must remain useful at session grain too, so that
+      the conventions doc's §5 public-surface contract does not silently
+      require a feature agx hasn't committed to yet. When agx ships
+      `--jump-to`, upgrade sift's subprocess call and drop this note.
 
-**1.3 — Review-while-replaying (the validation experiment)**
-- [ ] `sift review --through-agx <session>` command: opens agx on the named
-      session, intercepts `r` presses on Write/Edit steps, drops into sift's
-      accept/revert flow inline without leaving the agx view
-- [ ] On exit, returns agx view to where the user was; sift TUI state
-      persists across opens
-- [ ] Ship behind `--experimental` flag for v0.3.0; graduate or kill in
-      v0.4 based on usage signal
+**1.4 — Validation dogfood**
+- [ ] Dogfood `sift review` with agx installed across 20+ real
+      sessions. No fixed calendar window; continue until the signal is
+      clear.
+- [ ] Track in a notes file: how often `t` gets pressed, whether
+      timeline context changed review decisions, which entries it
+      helped on
+- [ ] Validation criterion:
 
-**Validation criteria for the Phase 1 thesis:**
+  | Signal | What it means |
+  |--------|---------------|
+  | `t` gets pressed reflexively; timeline context visibly changes review decisions | **Thesis validated. Continue to Phase 2.** |
+  | `t` gets pressed occasionally; mostly confirms what the entry already told you | **Thesis partial. Keep the integration, proceed with reduced investment in Phase 2+.** |
+  | `t` rarely or never gets pressed | **Thesis falsified. Drop agx integration work; keep sift's standalone surface.** |
 
-| Signal | What it means |
-|--------|---------------|
-| The maintainer reaches for `sift review --through-agx` on their own sessions without thinking | **Thesis validated. Continue to Phase 2.** |
-| The maintainer finds it "mildly nicer" but not load-bearing | **Thesis not validated. Archive sift, recommend agx + commit discipline.** |
-| The UX feels awkward, requires context-switching, or surfaces integration bugs faster than features | **Thesis falsified. Sunset sift; agx is the tool that matters.** |
+- [ ] Write the verdict into `HANDOFF.md` before starting Phase 2, with
+      the notes file committed as evidence
 
-**1.4 — `sift fsck` and partial-write recovery**
-- [ ] `sift fsck` subcommand that parses `pending.jsonl` / `ledger.jsonl`
-      byte-for-byte (not line-oriented) so a hook crash that leaves a
-      newline-less partial write no longer costs the next valid entry on
-      the subsequent `BufReader::lines()` parse (see comment in
-      `sift-core/src/store.rs::read_jsonl`)
-- [ ] Detect and report: duplicate ids from the crash-between-append-ledger-
-      and-append-change window, orphan tombstones in `*_changes.jsonl`,
-      truncated trailing records
-- [ ] `--repair` flag writes a recovered JSONL and moves the original to
-      `ledger.jsonl.bad.<ulid>` so forensic inspection is possible
+**1.5 — `sift fsck` and partial-write recovery** (parallel track, orthogonal to agx)
+- [ ] Independent of the agx work above; ship in parallel so the
+      dogfood in 1.4 runs on a more robust ledger
+- [ ] `sift fsck` parses `pending.jsonl` / `ledger.jsonl` byte-for-byte
+      so a hook crash that leaves a newline-less partial write no
+      longer costs the next valid entry on the subsequent
+      `BufReader::lines()` parse (see `sift-core/src/store.rs::read_jsonl`)
+- [ ] Detect and report: duplicate ids from the crash-between-
+      append-ledger-and-append-change window, orphan tombstones in
+      `*_changes.jsonl`, truncated trailing records
+- [ ] `--repair` flag writes a recovered JSONL and moves the original
+      to `ledger.jsonl.bad.<ulid>` so forensic inspection stays possible
 - [ ] Graduates the "known edge case" from code comment to covered
       invariant; unblocks confident use in long unattended agent runs
 
-**1.5 — Unified detail view**
-- [ ] In both tools, the detail pane for a Write/Edit step shows: prompt
-      that led to it → assistant's reasoning → tool call input → tool call
-      result → sift pre-state snapshot → sift post-state snapshot → current
-      sift status (pending/accepted/reverted/edited)
-- [ ] Shared schema definition (lives in `agx-core` once that crate ships)
-- [ ] Both TUIs render from the same shape; visual diff is stylistic only
+**1.6 — Suite-conventions retrofits** (parallel track; coordinates with 1.3)
+- [ ] `docs/suite-conventions.md` §10 lists three sift-owned convention
+      drifts. Ship them together so TUI keymap churn is a single
+      release-noted event:
+      - accept key: `a` → `Enter` / `Space` (frees `a` for annotate)
+      - annotate key: `n` → `a` (aligns with agx; frees `n` for
+        next-search-match per §1)
+      - review TUI search: add `/` + `n` / `N` to match agx
+- [ ] Ship `sift doctor` subcommand per conventions §2: reports agx
+      and rgx presence + version + whether each sibling's CLI surface
+      matches the minimum-supported contract from conventions §5.
+      Reuses the feature-detection work from 1.1.
+- [ ] Update TUI help overlay, README keys table, and `--help` text in
+      lockstep with the keymap change. For one release, `a` still
+      accepts with a status-bar hint pointing at the new binding — then
+      remove the legacy binding in the next minor.
+- [ ] Move the retrofit rows out of `suite-conventions.md` §10 and into
+      §1 as the rows flip from "retrofit" to "shipped."
 
-**Acceptance:** a user opens a past Claude Code session in agx, steps through
-the timeline with `j/k`, presses `r` on each Write step, accepts or reverts
-inline. Session file is never modified. Sift ledger captures the verdict.
-After the walkthrough, `git add && git commit` captures exactly what the user
-accepted.
+A user with `sift` and `agx` both on `PATH` opens a session in
+`sift review`, navigates to a pending Write, presses `t` to see the full
+turn context in agx, returns to sift, and makes an accept or revert
+decision that was informed by the timeline. Without agx installed,
+everything else in sift works identically — the only visible difference
+is that `t` shows an install hint.
 
-**Depends on:** agx Phase 7.1 (agx-core crate) for full decoupling; partial
-implementation possible earlier with vendored parsers.
+### Depends on
 
-**Feeds:** everything else. If this validates, phases 2+ matter. If it
-doesn't, the rest of this roadmap is void.
+- Nothing upstream. agx's `--export json` is already shipped (agx Phase
+  1.4) and committed to schema stability.
+- sift 0.2.x baseline (shipped).
+
+### Feeds
+
+- Phase 2+ only matter for the agx-integrated slice of users if 1.4
+  lands on "validated" or "partial." The standalone-sift slice of the
+  roadmap (policy, sweep polish, multi-tool format maturity) proceeds
+  regardless.
+
+### Rationale vs prior revision
+
+The prior revision of Phase 1 assumed agx would ship an `agx-core`
+workspace crate that sift could depend on as a library (agx Phase 7.1)
+and that agx would add a `r`-to-sift keybind upstream. Both forced agx
+to restructure itself for sift's benefit. Under the revised *"agx is
+agx"* boundary, sift integrates at the CLI boundary only: `agx --export
+json` is the contract, no shared Rust code, no coordinated release
+train, no upstream agx changes. Both tools ship on their own cadence;
+users install either or both independently; the synergy when both are
+present is discovered, not required.
+
+The prior "review-while-replaying" subplan — sift wrapping agx and
+intercepting `r` presses — is deferred indefinitely. It required agx to
+signal back into sift, which violates the boundary. If 1.4 validates
+and users ask for deeper integration, revisit then; dogfood evidence
+comes first.
 
 ---
 
@@ -226,10 +322,17 @@ existing regex tooling; reusing its engine keeps the toolkit coherent.
 - [ ] Rule debug output: `sift policy test <path>` reports which rule matched
       and why, with the matched capture highlighted (rgx-style)
 
-**2.2 — `sift policy debug <pattern>` launches rgx**
-- [ ] Subcommand that shells out to `rgx --pattern <pat> --test <path>` so
-      users can iterate on a policy rule interactively
-- [ ] Requires rgx on PATH; print a helpful install message if missing
+**2.2 — `sift policy debug <pattern>` launches rgx (named integration: "Policy debug")**
+- [ ] Subcommand that shells out to `rgx --pattern <pat> --test <path>`
+      per conventions §1 cross-tool key table (`p` → rgx) and §5
+      (rgx's public CLI surface: `--pattern`, `--test`, `--print`,
+      `-P`). Named integration because the flow has a name that appears
+      identically in rgx's and sift's docs.
+- [ ] In `sift review` TUI, add `p` keybind on a pending entry whose
+      path was gated by a regex rule — opens rgx pre-loaded with the
+      matched rule's pattern and the entry's path as test string
+- [ ] Requires rgx on PATH; missing sibling → status-bar hint per
+      conventions §6 rule 2 (silent degrade — never hard-fail)
 
 **2.3 — Policy testing**
 - [ ] `sift policy check` runs all rules against the full working tree and
@@ -491,23 +594,35 @@ Triggers that should cause a revision:
 
 ---
 
-## Appendix: Relationship to the brevity1swos toolkit
+## Appendix: Relationship to the stepwise suite
 
-sift is one of three terminal-native debugging tools under `brevity1swos`:
+sift is one of three terminal-native debugging tools that make up
+**stepwise** (brevity1swos is the GitHub org; stepwise is the product
+umbrella, landing page at `brevity1swos/stepwise`):
 
 | Tool | Role | Status |
 |------|------|--------|
-| **rgx** | Regex debugger — step through matches, visualize capture groups | v0.10.1, stable |
-| **agx** | Agent trace viewer — timeline scrubber for session files | v0.1.x, active |
+| **rgx** | Regex debugger — step through matches, visualize capture groups | v0.11.0, stable |
+| **agx** | Agent trace viewer — timeline scrubber for session files | v0.1.x (Phases 0–4 shipped) |
 | **sift** | AI write review gate — accept/revert what the agent wrote | v0.2.x, validating thesis |
 
-Shared DNA: Rust + ratatui + crossterm, terminal-first, zero hosted components,
-no telemetry, cross-tool support where applicable. Each tool does one thing;
-the value compounds at the intersection.
+Shared DNA: Rust + ratatui + crossterm, terminal-first, zero hosted
+components, no telemetry, cross-tool support where applicable. Each tool
+does one thing; the value compounds at the intersection. Shared conventions
+(keybindings, CLI grammar, color palette, cross-tool contracts) are
+codified in `docs/suite-conventions.md`, copied verbatim across the three
+repos — divergence is a smell, fix forward.
 
-Pitch for the suite: **"Your agent wrote 50 files. agx shows you what happened.
-sift lets you pick what to keep. rgx debugs your policy patterns. All three
-live in your terminal, all three work across Claude / Codex / Gemini."**
+Pitch for the suite: **"Your agent wrote 50 files. agx shows you what
+happened. sift lets you pick what to keep. rgx debugs your policy
+patterns. All three live in your terminal, all three work across Claude /
+Codex / Gemini."**
+
+Pitch for the trial: **"stepwise is a bet that humans can stay in the loop
+on agentic workflows without paying efficiency for the privilege. If that
+bet fails — if oversight measurably slows the agent's cycle without a
+compensating catch — the trial ends and the tools get archived. Every
+feature in all three tools passes that test before it ships."**
 
 If any one of these stops earning its place, cut it. Don't let suite logic
 rescue a tool that isn't working on its own merits.
