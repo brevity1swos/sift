@@ -27,7 +27,7 @@ pub fn run(event: HookEvent) -> Result<ExitCode> {
     if paths.current_symlink().symlink_metadata().is_err() {
         return Ok(ExitCode::from(0));
     }
-    let session = Session::open_current(Paths::new(&project_root))?;
+    let session = Session::open_current(paths.clone())?;
     let config = Config::load(&paths.config_file())?;
     let store = Store::new(&session.dir);
     let pending = store.list_pending()?;

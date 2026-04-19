@@ -10,7 +10,7 @@ use std::path::Path;
 
 pub fn run(cwd: &Path, apply: bool) -> Result<()> {
     let paths = Paths::new(cwd);
-    let session = Session::open_current(Paths::new(cwd))?;
+    let session = Session::open_current(paths.clone())?;
     let store = Store::new(&session.dir);
     let pending = store.list_pending()?;
     let candidates = detect(&pending, paths.project_root())?;

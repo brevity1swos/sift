@@ -31,7 +31,7 @@ pub fn run(event: HookEvent) -> Result<()> {
     if paths.current_symlink().symlink_metadata().is_err() {
         return Ok(());
     }
-    let session = Session::open_current(Paths::new(&project_root))?;
+    let session = Session::open_current(paths.clone())?;
 
     // Bash: detect files modified since the pre-tool timestamp.
     if event.tool_name.as_deref() == Some("Bash") {
