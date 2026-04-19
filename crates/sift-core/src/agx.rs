@@ -125,7 +125,11 @@ fn parse_triple(token: &str) -> Option<Version> {
 
 /// Spawn `<bin> --version`, wait up to `timeout`, return captured stdout.
 /// Kills the child on timeout so we don't leak zombies.
-fn probe_version(bin: &str, timeout: Duration) -> Option<String> {
+///
+/// Public so other sift-cli sibling probes (rgx, future tools) can reuse
+/// the same hang-safe machinery instead of reinventing it with a bare
+/// `Command::output()` that would block forever on a misbehaving binary.
+pub fn probe_version(bin: &str, timeout: Duration) -> Option<String> {
     let mut child = Command::new(bin)
         .arg("--version")
         .stdout(Stdio::piped())
@@ -162,7 +166,10 @@ fn probe_version(bin: &str, timeout: Duration) -> Option<String> {
     }
 }
 
-fn probe_timeout() -> Duration {
+/// Default probe timeout, honoring `SIFT_AGX_TIMEOUT_MS`. Public so
+/// non-agx sibling probes (e.g. rgx in `sift doctor`) get the same
+/// override knob without duplicating the env-var name.
+pub fn probe_timeout() -> Duration {
     std::env::var("SIFT_AGX_TIMEOUT_MS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())

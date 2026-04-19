@@ -105,37 +105,70 @@ fn probe_agx() -> SiblingInfo {
     }
 }
 
-/// rgx currently has no declared minimum-version contract with sift (Phase 2
-/// adds `sift policy debug` → rgx and will set one then). For now, a plain
-/// presence-and-version probe is enough.
+/// rgx currently has no declared minimum-version contract with sift (Phase
+/// 2 adds `sift policy debug` → rgx and will set one then). For now, a
+/// plain presence-and-version probe is enough.
+///
+/// Uses the same hang-safe `agx::probe_version` helper so a misbehaving
+/// rgx binary (hung on stdin, slow startup, fork-bomb-by-mistake) cannot
+/// block `sift doctor`. A bare `Command::output()` here would deadlock
+/// indefinitely.
 fn probe_rgx() -> SiblingInfo {
-    match Command::new("rgx").arg("--version").output() {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let version = stdout.lines().next().map(|l| l.trim().to_string());
+    match agx::probe_version("rgx", agx::probe_timeout()) {
+        Some(raw) => {
+            let version = raw.lines().next().map(|l| l.trim().to_string());
             SiblingInfo {
                 status: SiblingStatus::Ok,
                 version,
                 min_version: None,
             }
         }
-        Ok(_) => SiblingInfo {
-            status: SiblingStatus::Unknown,
-            version: None,
-            min_version: None,
-        },
-        Err(_) => SiblingInfo {
-            status: SiblingStatus::Missing,
-            version: None,
-            min_version: None,
-        },
+        None => {
+            // Disambiguate "missing" from "present but probe failed". A
+            // bare spawn that succeeds but exits non-zero / hangs / emits
+            // unparseable output all collapse into None from the helper;
+            // the cheap secondary probe distinguishes the absent case.
+            if raw_probe_succeeded("rgx") {
+                SiblingInfo {
+                    status: SiblingStatus::Unknown,
+                    version: None,
+                    min_version: None,
+                }
+            } else {
+                SiblingInfo {
+                    status: SiblingStatus::Missing,
+                    version: None,
+                    min_version: None,
+                }
+            }
+        }
     }
 }
 
-/// Returns true if `<bin> --version` at least spawned (regardless of exit or
-/// parseable output). Used to distinguish "missing" from "unknown".
+/// Returns true if `<bin>` is on PATH (and we have permission to execute
+/// it). Used to disambiguate "binary is missing entirely" from "binary
+/// exists but its --version output is unparseable / it's hung."
+///
+/// Spawns and immediately kills — does NOT wait for the child to exit or
+/// for stdout. Calling `Command::output()` here would defeat the entire
+/// purpose of the timeout-safe `agx::probe_version` we just relied on,
+/// since a hung binary would hang this call too.
 fn raw_probe_succeeded(bin: &str) -> bool {
-    Command::new(bin).arg("--version").output().is_ok()
+    use std::process::Stdio;
+    match Command::new(bin)
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()
+    {
+        Ok(mut child) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 pub fn run(cwd: &Path, json: bool) -> Result<()> {
@@ -185,9 +218,9 @@ pub fn run(cwd: &Path, json: bool) -> Result<()> {
             status: IntegrationStatus::Planned,
             note: match rgx.status {
                 SiblingStatus::Ok | SiblingStatus::Unknown => {
-                    "rgx detected; sift integration planned for v0.4".into()
+                    "rgx detected; sift integration planned for v0.5".into()
                 }
-                _ => "install rgx: cargo install rgx-cli (sift integration planned for v0.4)".into(),
+                _ => "install rgx: cargo install rgx-cli (sift integration planned for v0.5)".into(),
             },
         },
     ];
