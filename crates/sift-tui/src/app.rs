@@ -1,7 +1,7 @@
 //! App state for the sidecar TUI.
 
 use anyhow::Result;
-use sift_core::{entry::LedgerEntry, store::Store};
+use sift_core::{entry::LedgerEntry, session::SessionMeta, store::Store};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,12 +17,22 @@ pub struct App {
     pub should_quit: bool,
     /// Set by `e` key — the main loop suspends the TUI and spawns $EDITOR.
     pub edit_request: Option<String>,
+    /// Set by `t` key — the main loop suspends the TUI and spawns agx.
+    pub jump_to_agx_request: bool,
+    /// One-line hint shown below the help bar; cleared on the next keypress.
+    /// Used for "agx not installed" and deprecation notices per
+    /// `docs/suite-conventions.md` §6 rule 2 (silent degrade).
+    pub status_msg: Option<String>,
     /// Current input mode (Normal or typing an annotation).
     pub input_mode: InputMode,
     /// Text buffer for the annotation being typed.
     pub input_buf: String,
     /// Entry ID being annotated.
     pub annotating_id: Option<String>,
+    /// Agent transcript path read from session meta.json, if any. Loaded
+    /// lazily on `t` keypress — no I/O on every keystroke.
+    transcript_path: Option<PathBuf>,
+    transcript_loaded: bool,
 }
 
 impl App {
@@ -53,12 +63,34 @@ impl App {
             cursor: 0,
             should_quit: false,
             edit_request: None,
+            jump_to_agx_request: false,
+            status_msg: None,
             input_mode: InputMode::Normal,
             input_buf: String::new(),
             annotating_id: None,
+            transcript_path: None,
+            transcript_loaded: false,
         };
         app.reload()?;
         Ok(app)
+    }
+
+    /// Return the host agent's transcript path from meta.json, lazy-loading
+    /// on first call. Returns `None` if the session predates v0.3 (no field)
+    /// or if meta.json is missing / unparseable — either way, a `None`
+    /// result means "tell the user we don't have a transcript to hand to
+    /// agx" rather than surfacing an error.
+    pub fn transcript_path(&mut self) -> Option<&Path> {
+        if !self.transcript_loaded {
+            self.transcript_loaded = true;
+            let meta_path = self.session_dir.join("meta.json");
+            if let Ok(text) = std::fs::read_to_string(&meta_path) {
+                if let Ok(meta) = serde_json::from_str::<SessionMeta>(&text) {
+                    self.transcript_path = meta.transcript_path;
+                }
+            }
+        }
+        self.transcript_path.as_deref()
     }
 
     pub fn reload(&mut self) -> Result<()> {

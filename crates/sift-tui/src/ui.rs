@@ -32,7 +32,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     match app.input_mode {
         InputMode::Annotating => draw_input(f, app, bottom_area),
-        InputMode::Normal => draw_help_bar(f, bottom_area),
+        InputMode::Normal => draw_help_bar(f, app, bottom_area),
     }
 }
 
@@ -102,16 +102,34 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(input, area);
 }
 
-fn draw_help_bar(f: &mut Frame, area: Rect) {
+fn draw_help_bar(f: &mut Frame, app: &App, area: Rect) {
+    // When a status message is set (agx missing, deprecation hint, etc.)
+    // show it instead of the help bar. The message is one-shot — the next
+    // keypress clears it (see events::handle_normal).
+    if let Some(msg) = app.status_msg.as_deref() {
+        let line = Line::from(vec![
+            Span::raw(" "),
+            Span::styled(msg, Style::default().fg(Color::Yellow)),
+        ]);
+        let bar = Paragraph::new(line);
+        f.render_widget(bar, area);
+        return;
+    }
+
+    // Keys align with docs/suite-conventions.md §1. `Enter` accepts per
+    // the new suite-wide primary; `a` still works for compatibility
+    // until the v0.4 keymap flip. `t` jumps to agx (feature-detected).
     let help = Line::from(vec![
-        Span::styled(" a", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw("ccept "),
+        Span::styled(" Enter", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(" accept "),
         Span::styled("r", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("evert "),
         Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("dit "),
         Span::styled("n", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("ote "),
+        Span::styled("t", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(" agx "),
         Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("uit"),
     ]);

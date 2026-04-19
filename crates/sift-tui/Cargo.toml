@@ -8,7 +8,9 @@ license.workspace = true
 anyhow.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
+serde_json.workspace = true
 sift-core = { path = "../sift-core" }
 
 [dev-dependencies]
 tempfile.workspace = true
+chrono.workspace = true

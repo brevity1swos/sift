@@ -45,6 +45,12 @@ pub fn run(session_dir: &Path) -> Result<()> {
             handle_edit(&mut terminal, &mut app, &entry_id)?;
         }
 
+        // Handle agx handoff: suspend TUI → spawn agx on transcript → resume.
+        if app.jump_to_agx_request {
+            app.jump_to_agx_request = false;
+            handle_jump_to_agx(&mut terminal, &mut app)?;
+        }
+
         app.reload()?;
         if app.should_quit {
             break;
@@ -151,5 +157,49 @@ fn handle_edit<B: ratatui::backend::Backend + Write>(
     store.rewrite_pending_entries(&pending)?;
     store.finalize(&entry.id, Status::Edited)?;
     app.reload()?;
+    Ok(())
+}
+
+/// Suspend the TUI, spawn `agx <transcript-path>`, and resume. Session-
+/// level jump only — agx ≤ 0.1.x has no `--jump-to <path>:<step>` CLI flag,
+/// so the user lands on the first step and navigates via `:N` / search.
+/// See ROADMAP Phase 1.3 for the upstream tracking note.
+fn handle_jump_to_agx<B: ratatui::backend::Backend + Write>(
+    terminal: &mut Terminal<B>,
+    app: &mut app::App,
+) -> Result<()> {
+    // Snapshot the path off the app before suspending so we're not holding a
+    // borrow across the suspend/resume boundary.
+    let transcript = match app.transcript_path() {
+        Some(p) => p.to_path_buf(),
+        None => {
+            app.status_msg = Some("no transcript path recorded for this session".into());
+            return Ok(());
+        }
+    };
+
+    // Suspend TUI (same pattern as handle_edit).
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    let status = Command::new("agx").arg(&transcript).status();
+
+    // Resume TUI unconditionally — even on spawn failure we want the user
+    // back in sift, not stuck in a broken terminal.
+    enable_raw_mode()?;
+    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+    terminal.hide_cursor()?;
+    terminal.clear()?;
+
+    match status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            app.status_msg = Some(format!("agx exited with status {}", s));
+        }
+        Err(e) => {
+            app.status_msg = Some(format!("failed to spawn agx: {e}"));
+        }
+    }
     Ok(())
 }
