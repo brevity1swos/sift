@@ -40,6 +40,27 @@ pub fn read_from_stdin() -> Result<HookEvent> {
     parse(&buf)
 }
 
+/// Top-level payload keys sift has structured handling for. Anything a
+/// hook payload carries that isn't in this set is silently ignored by
+/// serde (we don't set `deny_unknown_fields`), which is the right
+/// default for format drift — but the drift is invisible without the
+/// `SIFT_DEBUG_UNKNOWNS` escape hatch below.
+///
+/// Ordered alphabetically; update when a handler starts consuming a
+/// field off of `raw`.
+const KNOWN_HOOK_KEYS: &[&str] = &[
+    "cwd",
+    "hook_event_name",
+    "prompt",
+    "session_id",
+    "stop_hook_active",
+    "tool_input",
+    "tool_name",
+    "tool_response",
+    "tool_use_id",
+    "transcript_path",
+];
+
 /// Parse a hook event from a JSON string. Exposed for tests and for
 /// `read_from_stdin` to share the single-parse logic.
 ///
@@ -51,8 +72,36 @@ pub fn parse(input: &str) -> Result<HookEvent> {
         .with_context(|| format!("parsing hook event: {input}"))?;
     let mut event: HookEvent = serde_json::from_value(raw.clone())
         .with_context(|| format!("deserializing hook event fields: {input}"))?;
+
+    // Drift detection: when `SIFT_DEBUG_UNKNOWNS` is set, report any
+    // top-level keys in the payload that aren't in KNOWN_HOOK_KEYS.
+    // Off by default so the hot path is untouched; enabling it in one
+    // shell is enough for a dogfood sweep without rebuilding anything.
+    if std::env::var_os("SIFT_DEBUG_UNKNOWNS").is_some() {
+        if let Some(unknowns) = unknown_keys(&raw) {
+            eprintln!("sift-hook: unknown payload keys: {}", unknowns.join(", "));
+        }
+    }
+
     event.raw = raw;
     Ok(event)
+}
+
+/// Return the top-level keys of `raw` that are not in `KNOWN_HOOK_KEYS`,
+/// sorted for deterministic output. Returns `None` when everything is
+/// recognized or when `raw` is not an object.
+fn unknown_keys(raw: &Value) -> Option<Vec<String>> {
+    let obj = raw.as_object()?;
+    let mut unknowns: Vec<String> = obj
+        .keys()
+        .filter(|k| !KNOWN_HOOK_KEYS.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    if unknowns.is_empty() {
+        return None;
+    }
+    unknowns.sort();
+    Some(unknowns)
 }
 
 #[cfg(test)]
@@ -122,5 +171,47 @@ mod tests {
         let e = HookEvent::default();
         assert!(e.tool_name.is_none());
         assert!(e.raw.is_null());
+    }
+
+    #[test]
+    fn unknown_keys_returns_none_when_all_known() {
+        let raw: Value = serde_json::from_str(
+            r#"{
+                "session_id": "s",
+                "cwd": "/tmp",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Write",
+                "tool_input": {"file_path": "/tmp/a.rs"},
+                "tool_use_id": "toolu_1"
+            }"#,
+        )
+        .unwrap();
+        assert!(unknown_keys(&raw).is_none());
+    }
+
+    #[test]
+    fn unknown_keys_reports_drift_sorted() {
+        let raw: Value = serde_json::from_str(
+            r#"{
+                "session_id": "s",
+                "cwd": "/tmp",
+                "hook_event_name": "PreToolUse",
+                "reasoning_effort": "high",
+                "permission_mode": "plan",
+                "tool_name": "Write"
+            }"#,
+        )
+        .unwrap();
+        let unknowns = unknown_keys(&raw).expect("should flag the two drift keys");
+        // Sorted alphabetically so assertions are stable across JSON
+        // object key-order quirks (serde_json uses IndexMap but we
+        // shouldn't rely on that).
+        assert_eq!(unknowns, vec!["permission_mode", "reasoning_effort"]);
+    }
+
+    #[test]
+    fn unknown_keys_returns_none_for_non_object_input() {
+        let raw: Value = serde_json::from_str("[1,2,3]").unwrap();
+        assert!(unknown_keys(&raw).is_none());
     }
 }
