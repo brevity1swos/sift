@@ -229,6 +229,7 @@ pub fn repair_session(paths: &Paths, session_id: &str) -> Result<RepairReport> {
             continue;
         }
 
+        let parsed_count = records.len();
         let mut seen = HashSet::new();
         let mut deduped: Vec<LedgerEntry> = Vec::new();
         for (_, entry) in records {
@@ -241,7 +242,8 @@ pub fn repair_session(paths: &Paths, session_id: &str) -> Result<RepairReport> {
         // Rewrite only if (a) the file had issues or (b) we dropped duplicates.
         let had_issues = out.issues.iter().any(|i| issue_file(i) == Some(kind));
         if had_issues {
-            let rewrite = rewrite_file(&path, kind, &deduped)?;
+            let dropped = parsed_count.saturating_sub(deduped.len());
+            let rewrite = rewrite_file(&path, kind, &deduped, dropped)?;
             out.rewrites.push(rewrite);
         }
         entry_ids.insert(kind, ids);
@@ -257,6 +259,7 @@ pub fn repair_session(paths: &Paths, session_id: &str) -> Result<RepairReport> {
         }
         let mut discard = Vec::new();
         let records = parse_records::<StatusChange>(&path, changes_kind, &mut discard)?;
+        let parsed_count = records.len();
         let empty = HashSet::new();
         let known = entry_ids.get(&paired).unwrap_or(&empty);
         let kept: Vec<StatusChange> = records
@@ -267,7 +270,8 @@ pub fn repair_session(paths: &Paths, session_id: &str) -> Result<RepairReport> {
 
         let had_issues = out.issues.iter().any(|i| issue_file(i) == Some(changes_kind));
         if had_issues {
-            let rewrite = rewrite_file(&path, changes_kind, &kept)?;
+            let dropped = parsed_count.saturating_sub(kept.len());
+            let rewrite = rewrite_file(&path, changes_kind, &kept, dropped)?;
             out.rewrites.push(rewrite);
         }
     }
@@ -300,10 +304,16 @@ fn ensure_session_closed(session_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Atomically replace `path` with a serialization of `records`, archiving
+/// the original to `<filename>.bad.<ulid>` first. `dropped` is the count
+/// the caller computed (parsed - kept) and gets surfaced in the
+/// user-facing report so "lost N records" is visible at a glance instead
+/// of buried in the .bad archive.
 fn rewrite_file<T: serde::Serialize>(
     path: &Path,
     kind: FileKind,
     records: &[T],
+    dropped: usize,
 ) -> Result<Rewrite> {
     use std::io::Write;
 
@@ -342,10 +352,6 @@ fn rewrite_file<T: serde::Serialize>(
         f.sync_all().ok(); // best-effort durability
         drop(f);
 
-        // Compute dropped count by re-reading the archive byte count: cheaper
-        // to just pass records.len() back and let caller subtract from prior
-        // issue counts. We record `records_kept` + `records_dropped = 0` here
-        // since we dedupe upstream; future versions may track drops explicitly.
         fs::rename(&tmp, path)
             .with_context(|| format!("renaming {} to {}", tmp.display(), path.display()))?;
 
@@ -353,7 +359,7 @@ fn rewrite_file<T: serde::Serialize>(
             file: kind,
             bad_archive: archive,
             records_kept: kept,
-            records_dropped: 0,
+            records_dropped: dropped,
         })
     }
 }
@@ -685,6 +691,10 @@ mod tests {
         assert_eq!(rep.rewrites.len(), 1);
         assert_eq!(rep.rewrites[0].file, FileKind::Pending);
         assert_eq!(rep.rewrites[0].records_kept, 1); // deduped to one
+        assert_eq!(
+            rep.rewrites[0].records_dropped, 1,
+            "duplicate id collapsed → 1 record dropped"
+        );
 
         // Archive file exists and starts with the original filename.
         let archive = &rep.rewrites[0].bad_archive;

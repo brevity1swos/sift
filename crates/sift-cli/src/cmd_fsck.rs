@@ -130,9 +130,10 @@ fn describe(issue: &Issue) -> String {
 
 fn describe_rewrite(rw: &Rewrite) -> String {
     format!(
-        "{}: kept {} record(s), archive = {}",
+        "{}: kept {} record(s), dropped {}, archive = {}",
         rw.file,
         rw.records_kept,
+        rw.records_dropped,
         rw.bad_archive.display(),
     )
 }
