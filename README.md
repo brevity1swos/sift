@@ -55,6 +55,11 @@ sift watch                   # open review in a tmux split pane
 sift history                 # list all past sessions
 sift history --json          # machine-readable session list
 sift init                    # wire hooks for current project
+sift doctor                  # report agx/rgx sibling detection and integration readiness
+sift doctor --json           # machine-readable doctor output
+sift fsck                    # check ledger JSONL for corruption (exit 1 if any)
+sift fsck --repair           # archive bad file + write cleaned replacement (closed sessions only)
+sift fsck --json             # machine-readable fsck report
 ```
 
 ## TUI keybindings (`sift review`)
@@ -62,11 +67,19 @@ sift init                    # wire hooks for current project
 | Key | Action |
 |-----|--------|
 | `j`/`k` | navigate entries |
-| `a` | accept current entry |
+| `Enter` / `Space` | accept current entry (suite-conventions primary) |
+| `a` | accept current entry (legacy — moves to annotate in v0.4) |
 | `r` | revert current entry |
 | `e` | edit post-state in `$EDITOR` before accepting |
 | `n` | annotate entry with a note |
+| `t` | hand off to agx on this session's transcript (feature-detected) |
 | `q` | quit |
+
+The `t` keybind requires [agx](https://github.com/brevity1swos/agx)
+on `PATH`. When agx is missing, `t` shows a one-line install hint in
+the status bar instead of failing. Session-level jump only — agx
+0.1.x does not ship `--jump-to <path>:<step>` yet; the user navigates
+to the relevant turn inside agx with `:N` or `/` search.
 
 ## Policy
 
@@ -109,9 +122,10 @@ Rules are evaluated top-to-bottom; first match wins. Default is `allow`.
   (planned, v0.4): iterate on a `.sift/policy.yml` pattern with
   step-through visibility before committing the rule.
 - **[agx](https://github.com/brevity1swos/agx)** — terminal agent
-  session viewer. Sift's `t` keybind in `sift review` opens agx at
-  the turn that produced the selected write (planned, v0.3), so
-  review decisions carry full timeline context.
+  session viewer. Sift's `t` keybind in `sift review` hands off to
+  agx on the current session's transcript (shipped session-level in
+  v0.3; step-level awaits agx `--jump-to`), so review decisions can
+  be informed by full timeline context without leaving the terminal.
 
 All three tools are independent — each earns its keep alone. Combined,
 they form **[stepwise](https://github.com/brevity1swos/stepwise)**,
