@@ -113,14 +113,23 @@ enum Commands {
     },
     /// Open sift review in a new tmux pane (requires tmux).
     Watch,
-    /// Wire sift hooks into the current project (or globally).
+    /// Wire sift hooks into the current project (or globally). Also
+    /// installs a `.git/hooks/post-commit` that auto-accepts matching
+    /// pending entries — pass `--manual-accept` to skip that step.
     Init {
         /// Write hooks to user-level config instead of project-level.
+        /// Skips the post-commit hook install (global hooks can't sit
+        /// in a per-repo .git/hooks/ anyway).
         #[arg(long)]
         global: bool,
         /// Target tool: claude (default), gemini, or cline.
         #[arg(long, default_value = "claude")]
         tool: String,
+        /// Skip installing the `.git/hooks/post-commit` auto-accept
+        /// hook. Power-user flag: if you want `sift accept` to remain
+        /// an explicit step (e.g. for active review workflows).
+        #[arg(long)]
+        manual_accept: bool,
     },
     /// Report sift version, sibling-tool detection (agx, rgx), and stepwise suite integration status.
     Doctor {
@@ -254,8 +263,12 @@ fn main() -> Result<ExitCode> {
                 }
             }
         }
-        Some(Commands::Init { global, tool }) => {
-            cmd_init::run(&cwd, global, &tool)?;
+        Some(Commands::Init {
+            global,
+            tool,
+            manual_accept,
+        }) => {
+            cmd_init::run(&cwd, global, &tool, manual_accept)?;
         }
         Some(Commands::Doctor { json }) => {
             cmd_doctor::run(&cwd, json)?;

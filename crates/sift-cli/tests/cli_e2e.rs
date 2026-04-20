@@ -533,6 +533,126 @@ fn accept_by_commit_ignores_commit_paths_without_matching_pending() {
     );
 }
 
+#[test]
+fn init_installs_executable_post_commit_hook_by_default() {
+    let td = TempDir::new().unwrap();
+    init_git(&td);
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["init"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "init should succeed");
+
+    let hook_path = td.path().join(".git/hooks/post-commit");
+    assert!(
+        hook_path.exists(),
+        "sift init should install .git/hooks/post-commit by default"
+    );
+    let script = fs::read_to_string(&hook_path).unwrap();
+    assert!(
+        script.contains("SIFT_MANAGED_HOOK=1"),
+        "hook must carry the sift-managed marker: {script}"
+    );
+    assert!(
+        script.contains("sift accept --by-commit HEAD --apply --quiet"),
+        "hook must invoke sift accept --by-commit: {script}"
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&hook_path).unwrap().permissions().mode();
+        assert_eq!(
+            mode & 0o111,
+            0o111,
+            "hook must be executable (mode {mode:o})"
+        );
+    }
+}
+
+#[test]
+fn init_manual_accept_skips_hook_install() {
+    let td = TempDir::new().unwrap();
+    init_git(&td);
+
+    Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["init", "--manual-accept"])
+        .assert()
+        .success();
+
+    let hook_path = td.path().join(".git/hooks/post-commit");
+    assert!(
+        !hook_path.exists(),
+        "--manual-accept should skip hook install, but hook exists at {}",
+        hook_path.display()
+    );
+}
+
+#[test]
+fn init_refuses_to_overwrite_non_sift_post_commit_hook() {
+    let td = TempDir::new().unwrap();
+    init_git(&td);
+
+    let hooks_dir = td.path().join(".git/hooks");
+    fs::create_dir_all(&hooks_dir).unwrap();
+    let hook_path = hooks_dir.join("post-commit");
+    let custom = "#!/bin/sh\necho 'user hook'\n";
+    fs::write(&hook_path, custom).unwrap();
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["init"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "init should still succeed overall");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("not sift-managed"),
+        "stdout must explain the refusal: {stdout}"
+    );
+
+    // Original hook untouched.
+    let after = fs::read_to_string(&hook_path).unwrap();
+    assert_eq!(after, custom, "non-sift hook must not be overwritten");
+}
+
+#[test]
+fn init_twice_is_idempotent_on_hook() {
+    // Running `sift init` a second time should recognize its own marker
+    // and skip rather than regenerating the file.
+    let td = TempDir::new().unwrap();
+    init_git(&td);
+
+    Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["init"])
+        .assert()
+        .success();
+    let first = fs::read_to_string(td.path().join(".git/hooks/post-commit")).unwrap();
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["init"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("already installed"),
+        "re-init should note already-installed: {stdout}"
+    );
+    let second = fs::read_to_string(td.path().join(".git/hooks/post-commit")).unwrap();
+    assert_eq!(first, second, "hook content should be stable across re-init");
+}
+
 fn init_git(td: &TempDir) {
     git(td, &["init", "-q"]);
     git(td, &["config", "user.email", "test@example.com"]);

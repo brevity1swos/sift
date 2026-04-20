@@ -24,7 +24,7 @@ impl ToolTarget {
     }
 }
 
-pub fn run(cwd: &Path, global: bool, tool: &str) -> Result<()> {
+pub fn run(cwd: &Path, global: bool, tool: &str, manual_accept: bool) -> Result<()> {
     let target = ToolTarget::from_str(tool)?;
 
     match target {
@@ -33,11 +33,112 @@ pub fn run(cwd: &Path, global: bool, tool: &str) -> Result<()> {
         ToolTarget::Cline => init_cline(cwd)?,
     }
 
-    // Add .sift/ to .gitignore (project-level only).
+    // Project-level init also gets .sift/ in .gitignore and (unless
+    // opted out) the post-commit hook that makes sift an invisible
+    // passive tracking layer — the user never types a sift command
+    // in the common case; `git commit` settles the pending ledger.
     if !global {
         ensure_gitignore(cwd)?;
+        if !manual_accept {
+            install_post_commit_hook(cwd)?;
+        }
     }
 
+    Ok(())
+}
+
+/// Install `.git/hooks/post-commit` that runs
+/// `sift accept --by-commit HEAD --apply --quiet` after each commit.
+/// Safe in three senses:
+///
+/// 1. **No git repo** → silently skipped with a note. `sift init` works
+///    outside a git repo; the hook just can't be installed there.
+/// 2. **Existing sift-managed hook** → treated as already-installed.
+///    Detected by the `SIFT_MANAGED_HOOK=1` marker line inside the
+///    script.
+/// 3. **Existing non-sift hook** → refuses to overwrite. Prints a
+///    suggestion to manually add
+///    `sift accept --by-commit HEAD --apply --quiet` to whatever
+///    hook framework the user is using (husky, lefthook, pre-commit,
+///    a custom script, …).
+fn install_post_commit_hook(cwd: &Path) -> Result<()> {
+    let hooks_dir = cwd.join(".git").join("hooks");
+    if !cwd.join(".git").is_dir() {
+        println!(
+            "  no .git/ directory — skipping post-commit hook install \
+             (run `sift init --manual-accept` to silence this note in the future)"
+        );
+        return Ok(());
+    }
+    fs::create_dir_all(&hooks_dir)
+        .with_context(|| format!("creating {}", hooks_dir.display()))?;
+
+    let hook_path = hooks_dir.join("post-commit");
+    if hook_path.exists() {
+        let existing = fs::read_to_string(&hook_path).unwrap_or_default();
+        if existing.contains("SIFT_MANAGED_HOOK=1") {
+            println!("  post-commit hook already installed (sift-managed)");
+            return Ok(());
+        }
+        println!(
+            "  post-commit hook exists and is not sift-managed — not overwriting."
+        );
+        println!(
+            "  to enable auto-accept-on-commit, add this line to your existing hook:"
+        );
+        println!("      sift accept --by-commit HEAD --apply --quiet");
+        return Ok(());
+    }
+
+    let script = POST_COMMIT_HOOK_TEMPLATE;
+    fs::write(&hook_path, script)
+        .with_context(|| format!("writing {}", hook_path.display()))?;
+    make_executable(&hook_path)?;
+    println!(
+        "  installed post-commit hook at {} (commits will auto-accept matching sift entries)",
+        hook_path.display()
+    );
+    Ok(())
+}
+
+/// The post-commit hook script. The `SIFT_MANAGED_HOOK=1` marker is
+/// how `sift init` on a future run detects that it owns this file
+/// (and may safely regenerate it) vs a user-owned hook (which must
+/// not be overwritten).
+///
+/// The script is silent on success (via `--quiet`) so normal commits
+/// don't spam the terminal. On divergence or error, `sift accept`
+/// exits non-zero and git will print its output — that's the right
+/// time to surface something to the user.
+const POST_COMMIT_HOOK_TEMPLATE: &str = "#!/bin/sh
+# Installed by `sift init`. This hook runs after every `git commit` and
+# auto-accepts pending sift ledger entries whose post-state matches the
+# committed file content. Diverged entries (file edited between agent
+# write and commit) stay pending with a hint for manual review.
+#
+# To regenerate: `sift init`. To disable: delete this file, or run
+# `sift init --manual-accept` to skip the auto-install.
+#
+# SIFT_MANAGED_HOOK=1
+exec sift accept --by-commit HEAD --apply --quiet
+";
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = fs::metadata(path)
+        .with_context(|| format!("stat {}", path.display()))?
+        .permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(path, perms)
+        .with_context(|| format!("chmod 755 {}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<()> {
+    // Windows: git runs .sh hooks through the bundled shell regardless
+    // of executable bits, so nothing to do here.
     Ok(())
 }
 
