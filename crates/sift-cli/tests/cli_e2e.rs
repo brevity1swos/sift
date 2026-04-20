@@ -245,6 +245,103 @@ fn mode_strict_persists_in_config() {
 }
 
 #[test]
+fn state_at_turn_diffs_two_arbitrary_turns() {
+    // The Phase 1.7 acceptance criterion: pick two turns A and B, get
+    // the diff of the file world between them. Composes via two
+    // `sift state` calls.
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+
+    fs::create_dir_all(td.path().join("src")).unwrap();
+
+    // Real Claude flow: UserPromptSubmit (bumps turn) precedes the
+    // tool calls that fire under that prompt. Turn counter starts at
+    // 0; bump_turn → 1; first write recorded at turn 1.
+    bump_turn(&td);
+    write_via_hook(&td, "src/a.rs", b"first");
+    // Turn 2: bump, then write src/b.rs.
+    bump_turn(&td);
+    write_via_hook(&td, "src/b.rs", b"second");
+    // Turn 3: bump, then overwrite src/a.rs with new contents.
+    bump_turn(&td);
+    write_via_hook(&td, "src/a.rs", b"first-modified");
+
+    // State at turn 1: only a.rs (with original content hash).
+    let out_t1 = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["state", "--at-turn", "1"])
+        .output()
+        .unwrap();
+    assert!(out_t1.status.success(), "state --at-turn 1 should succeed");
+    let json_t1 = String::from_utf8_lossy(&out_t1.stdout);
+    assert!(
+        json_t1.contains("src/a.rs"),
+        "turn 1 should include src/a.rs, got: {json_t1}"
+    );
+    assert!(
+        !json_t1.contains("src/b.rs"),
+        "turn 1 should NOT include src/b.rs (not yet written), got: {json_t1}"
+    );
+
+    // State at turn 3: both files with the latest content hashes.
+    let out_t3 = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["state", "--at-turn", "3"])
+        .output()
+        .unwrap();
+    let json_t3 = String::from_utf8_lossy(&out_t3.stdout);
+    assert!(json_t3.contains("src/a.rs"));
+    assert!(json_t3.contains("src/b.rs"));
+
+    // The two outputs must differ (a.rs's hash changed; b.rs is new).
+    assert_ne!(
+        json_t1.trim(),
+        json_t3.trim(),
+        "state-at-turn-1 and state-at-turn-3 must differ"
+    );
+}
+
+#[test]
+fn state_baseline_returns_pre_states() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    fs::create_dir_all(td.path().join("src")).unwrap();
+    write_via_hook(&td, "src/a.rs", b"first");
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["state", "--at-turn", "999", "--baseline"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "state --baseline should succeed");
+    let json = String::from_utf8_lossy(&out.stdout);
+    // The baseline includes the path even though the agent created it
+    // (the value is null because there was no pre-state).
+    assert!(
+        json.contains("src/a.rs"),
+        "baseline should include src/a.rs, got: {json}"
+    );
+}
+
+/// Simulate a UserPromptSubmit hook to bump the session turn counter.
+fn bump_turn(td: &TempDir) {
+    let event = serde_json::json!({
+        "cwd": td.path(),
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "next"
+    });
+    Command::cargo_bin("sift-hook")
+        .unwrap()
+        .arg("user-prompt")
+        .write_stdin(event.to_string())
+        .assert()
+        .success();
+}
+
+#[test]
 fn list_path_filter_keeps_only_matching_entries() {
     let td = TempDir::new().unwrap();
     start_session(&td);

@@ -14,6 +14,7 @@ pub mod snapshot;
 pub mod state;
 pub mod store;
 pub mod sweep;
+pub mod world;
 
 pub use config::Mode;
 pub use entry::{new_entry_id, DiffStats, LedgerEntry, Op, Status, Tool};

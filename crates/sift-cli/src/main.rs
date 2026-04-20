@@ -15,6 +15,7 @@ mod cmd_log;
 mod cmd_mode;
 mod cmd_revert;
 mod cmd_review;
+mod cmd_state;
 mod cmd_status;
 mod cmd_sweep;
 
@@ -106,6 +107,25 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Reconstruct the file world at a chosen turn as a path → SHA-1 JSON map.
+    /// Compose twice (turns A and B) to diff the file world between any two turns.
+    State {
+        #[arg(long)]
+        session: Option<String>,
+        /// Turn boundary (inclusive). Use a large number for "all turns".
+        #[arg(long)]
+        at_turn: u32,
+        /// Include reverted writes when reconstructing state.
+        #[arg(long)]
+        include_reverted: bool,
+        /// Return the baseline (pre-state) map instead of state-at-turn.
+        /// Conflicts with --include-reverted (baseline is by definition pre-anything).
+        #[arg(long, conflicts_with = "include_reverted")]
+        baseline: bool,
+        /// Output format. Currently json only; reserved for future formats.
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
     /// Check (or repair) ledger JSONL integrity: truncated tails, duplicate ids, orphan tombstones.
     Fsck {
         /// Session id to check. Defaults to the current session.
@@ -194,6 +214,15 @@ fn main() -> Result<ExitCode> {
         }
         Some(Commands::Doctor { json }) => {
             cmd_doctor::run(&cwd, json)?;
+        }
+        Some(Commands::State {
+            session,
+            at_turn,
+            include_reverted,
+            baseline,
+            format,
+        }) => {
+            cmd_state::run(&cwd, session, at_turn, include_reverted, baseline, &format)?;
         }
         Some(Commands::Fsck {
             session,
