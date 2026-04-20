@@ -2,6 +2,27 @@
 
 The per-turn snapshot oracle for your AI agent's file world.
 
+## Who actually uses sift
+
+**The agent — not you.** sift records every file the agent writes
+silently in the background; you don't see it. When you ask the
+assistant something like *"what did you change in turn 7?"* or
+*"revert the second edit you made to src/auth.rs"* or *"what's
+different between turn 5 and turn 8?"*, the assistant runs the
+appropriate `sift` command and answers. Your only direct sift
+touchpoint is `git commit` — which (with the optional post-commit
+hook) auto-accepts the matching pending entries so sift's pending
+list and git's recorded state stay in sync. The `sift review` TUI
+exists as a power-user escape hatch but is not the primary
+interface.
+
+The unique value: **agents can't scroll their own transcripts
+efficiently** (tokens, context-window cost, conversational state
+lives in your head, not the agent's). sift's queryable per-turn
+ledger gives the agent a precise index the conversation can't
+provide. Git + scroll-the-transcript would suffice for you alone,
+but neither scales for the agent acting on your behalf.
+
 ## What this is
 
 `sift` records every file the agent writes, keyed by the conversation turn
@@ -92,7 +113,29 @@ sift fsck --repair           # archive bad file + write cleaned replacement (clo
 sift fsck --json             # machine-readable fsck report
 ```
 
-## TUI keybindings (`sift review`)
+## How the agent uses sift
+
+When sift is initialized in a project, the agent (Claude Code, Gemini
+CLI, Cline, etc.) should reach for these commands in response to
+natural-language requests. Full reference: [`docs/agent-guide.md`](docs/agent-guide.md).
+
+| User says (in conversation) | Agent runs |
+|----|----|
+| "what files did you change in turn 7?" | `sift list --turn 7 --json` |
+| "what changed between turn 5 and turn 8?" | `sift state --at-turn 5 --json` then `--at-turn 8 --json`, diff the maps |
+| "show me what you did to README" | `sift log --path README --json` |
+| "revert the third edit to src/auth.rs" | `sift list --path src/auth.rs --json`, pick the third id, `sift undo <id-prefix>` |
+| "undo everything from turn 4" | `sift undo turn-4` |
+| "what's still pending review?" | `sift status --json` |
+| "are agx and rgx wired up?" | `sift doctor --json` |
+
+After `git commit`, the agent (or the post-commit hook installed by
+`sift init --auto-accept-on-commit`) runs
+`sift accept --by-commit HEAD --apply --quiet` so the pending list
+clears for the writes git already settled. (Phase 1.7.3 — planned
+v0.5.)
+
+## TUI keybindings (`sift review`) — power-user escape hatch
 
 | Key | Action |
 |-----|--------|

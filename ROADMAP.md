@@ -68,6 +68,44 @@ substrate any consumer can address. The original "agx → public for
 sift; sift → public for nobody" asymmetry from suite-conventions §5
 becomes a symmetric publish-and-consume pattern.
 
+**Further reframe (later same day again): agent-as-user.** The
+three-layer stack above is accurate, but it left the question of
+*who operates sift* ambiguous. The sharp answer:
+
+> **sift's primary user is the agent.** The human's only direct sift
+> touchpoint is `git commit` (which auto-accepts via the optional
+> post-commit hook). Querying history, reverting a file, comparing
+> two turns — these happen conversationally: the user asks the
+> assistant in natural language, and the assistant runs the
+> appropriate sift command. The `sift review` TUI is a power-user
+> escape hatch, not the primary interface.
+
+This changes what matters structurally inside Phase 1.7:
+
+- **JSON outputs become the primary contract.** Every command ships
+  `--format json` at parity with text output. Errors are structured
+  (`{"error": "no_entries_for_turn", "turn": 99}`) so the agent can
+  handle them programmatically.
+- **sift ships an agent-facing guide** (`docs/agent-guide.md` + a
+  `sift --ai-help` flag) documenting when to reach for which
+  command. `sift init` optionally drops a sift-aware section into
+  the project's CLAUDE.md so the agent picks up the commands
+  without user briefing.
+- **Phase 1.4's validation gate shifts.** The question is no longer
+  "does the human reflexively press `t` in `sift review`" but
+  "does the agent reflexively reach for `sift state` /
+  `sift log --path` / `sift undo <id>` when the user asks about
+  history?" The latter is a falsifiable signal visible in any
+  conversation transcript.
+
+The unique value this exposes: **agents can't scroll their own
+transcripts efficiently** (tokens, context-window cost,
+conversational state lives in the user's head, not the agent's
+context). sift's queryable per-turn ledger gives the agent a precise
+index the conversation can't provide. Git + scroll-the-transcript
+could substitute for a human, but neither scales for the agent.
+That's the gap sift uniquely fills.
+
 **Who it serves.** A narrower audience than agx:
 
 - **Indie devs on agentic workflows** who don't commit between turns and want
