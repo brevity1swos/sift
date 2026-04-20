@@ -50,6 +50,24 @@ native (no browser switch), feature-detected integrations (missing siblings
 never block flow), fast startup, opt-in strict mode. Review exists to make
 judgment *possible*, not to impose it — and not to automate it away.
 
+**Reframe (Phase 1.7, 2026-04-19 later same day).** A subsequent design
+conversation sharpened the framing further. The "agx :: sift" pairing
+above stays accurate but understates the structural relationship. The
+sharper statement is a three-layer stack:
+
+> **sift** = per-turn snapshot oracle for the agent's file world
+> **agx** = navigator that addresses it (timeline + corpus + diff)
+> **git** = coarse approval signal that closes the loop
+
+The three layers stay independent at the code level (no shared crate;
+suite-conventions §6 one-way coupling preserved per direction), but
+their roles in the user's workflow are now clearly stacked. Phase 1.7
+ships the sift-side primitives (`sift state`, `sift export`,
+`sift accept --by-commit`) that turn this framing into a queryable
+substrate any consumer can address. The original "agx → public for
+sift; sift → public for nobody" asymmetry from suite-conventions §5
+becomes a symmetric publish-and-consume pattern.
+
 **Who it serves.** A narrower audience than agx:
 
 - **Indie devs on agentic workflows** who don't commit between turns and want
@@ -954,6 +972,13 @@ on agentic workflows without paying efficiency for the privilege. If that
 bet fails — if oversight measurably slows the agent's cycle without a
 compensating catch — the trial ends and the tools get archived. Every
 feature in all three tools passes that test before it ships."**
+
+Pitch for the stack (Phase 1.7 reframe): **"git tracks files at commit-
+grain. The agent transcript records intent, not state. Existing diff tools
+operate on file pairs, not world-states. sift sits at the gap: a per-turn
+snapshot oracle for the agent's file world. agx navigates over sift's
+ledger; git settles it commit-by-commit. The three layers compose for any
+question of the form 'what did the agent do, where, and what did I keep?'"**
 
 If any one of these stops earning its place, cut it. Don't let suite logic
 rescue a tool that isn't working on its own merits.

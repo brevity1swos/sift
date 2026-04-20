@@ -2,6 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status update 2026-04-19 (later same day):** A subsequent design
+> conversation produced **Phase 1.7** ("snapshot oracle"), which sharpens
+> sift's positioning from "writable sibling of agx" to a three-layer
+> stack — `sift = snapshot oracle, agx = navigator, git = approval signal`.
+> The Phase 1 work in this plan stays accurate (most of it shipped or
+> is in flight). The new framing introduces three sift-side primitives
+> (`sift state --at-turn N`, `sift export --format json`,
+> `sift accept --by-commit <ref>`) that make the snapshot store
+> queryable. Implementation plan: see
+> `2026-04-19-phase1.7-snapshot-oracle.md` in this directory. Phase 1.7
+> ships orthogonally to the Phase 1.4 validation gate (sift-side only,
+> no agx changes).
+
 **Goal.** Validate (or falsify) the core sift ↔ agx thesis — *agx shows you what happened, sift gates what you keep* — while hardening the ledger and aligning sift with the stepwise suite conventions. Three parallel tracks that ship as v0.3.
 
 **Scope boundary.** No agx code changes. Integration is process-boundary only. Every agx-dependent feature must degrade silently when agx is absent — status-bar hint, never a hard failure.

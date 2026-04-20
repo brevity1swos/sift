@@ -1,21 +1,49 @@
 # sift
 
-git status for AI-generated writes.
+The per-turn snapshot oracle for your AI agent's file world.
 
 ## What this is
 
-`sift` is a session-scoped ledger for AI coding assistants. It intercepts every
-file write the assistant makes, snapshots the pre-write state, and lets you
-review, accept, revert, or edit each change — one turn at a time.
+`sift` records every file the agent writes, keyed by the conversation turn
+that caused it. The result is a queryable index of the agent's file actions —
+"which files changed in turn 7", "what did the agent write between turn 5
+and turn 8", "revert that one but keep the others" — that doesn't depend on
+scrolling the transcript or running coarse `git diff`.
+
+Each write is content-addressed (SHA-1) and stored under `.sift/sessions/<id>/`,
+along with a per-turn ledger entry that records the path, the pre/post-state
+snapshots, and the eventual decision (pending → accepted / reverted / edited).
 
 Supports **Claude Code**, **Gemini CLI**, and **Cline** via hook integration.
 Bash-tool file mutations are also captured.
 
+### Three-layer stack
+
+`sift` is one layer of a three-tool workflow:
+
+- **sift** = per-turn snapshot oracle for the agent's file world
+- **[agx](https://github.com/brevity1swos/agx)** = navigator that addresses
+  it (timeline + corpus + diff)
+- **git** = coarse approval signal that closes the loop
+
+The layers are independent — sift earns its keep without agx, agx without
+sift, both without git — but the value compounds when stacked. The sharpest
+move sift unlocks: pick any two turns A and B, ask "what changed in the file
+world between them" (Phase 1.7, in progress).
+
 ## What this is not
 
-- Not a git replacement — sift operates on the working tree at sub-commit grain.
-- Not a linter or security scanner — it tracks *what* changed, not whether it's safe.
-- Not a general-purpose backup — snapshots are scoped to the session under `.sift/`.
+- **Not a git replacement.** sift operates *between* commits at per-turn
+  grain; git remains the human's coarse approval signal. The intended workflow
+  is `git commit` → `sift accept --by-commit` (closes the grain gap; planned
+  Phase 1.7).
+- **Not a linter or security scanner.** sift tracks *what* changed, not
+  whether it's safe.
+- **Not a general-purpose backup.** snapshots are scoped to the session
+  under `.sift/` and garbage-collected by `sift gc`.
+- **Not an automation of judgment.** sift exposes file-world changes for a
+  human to review. It does not classify writes as "safe" and auto-accept them.
+  See `docs/suite-conventions.md` for the design philosophy.
 
 ## Install
 
@@ -123,20 +151,29 @@ Rules are evaluated top-to-bottom; first match wins. Default is `allow`.
 
 ## Pairs well with
 
+The full three-layer stack:
+
+- **git** is the coarse approval signal. Use `sift accept --by-commit
+  HEAD` (planned Phase 1.7) after each commit to settle the per-turn
+  ledger against what git already considers approved. Removes the
+  "approve once for sift, again for git" workflow tax.
+- **[agx](https://github.com/brevity1swos/agx)** — the navigator
+  layer above sift. Sift's `t` keybind in `sift review` hands off to
+  agx on the current session's transcript (shipped session-level in
+  v0.3; step-level awaits agx `--jump-to`). When sift's
+  `sift export --format json` ships (Phase 1.7), agx will be able
+  to overlay sift status on each timeline step and diff the file
+  world between any two turns the user navigates to.
 - **[rgx](https://github.com/brevity1swos/rgx)** — terminal regex
   debugger. Sift will use rgx for interactive policy-rule debugging
   (planned, v0.5): iterate on a `.sift/policy.yml` pattern with
   step-through visibility before committing the rule.
-- **[agx](https://github.com/brevity1swos/agx)** — terminal agent
-  session viewer. Sift's `t` keybind in `sift review` hands off to
-  agx on the current session's transcript (shipped session-level in
-  v0.3; step-level awaits agx `--jump-to`), so review decisions can
-  be informed by full timeline context without leaving the terminal.
 
 All three tools are independent — each earns its keep alone. Combined,
 they form **[stepwise](https://github.com/brevity1swos/stepwise)**,
 the terminal-native step-through debugger stack for the AI-development
-workflow.
+workflow. The reframed pitch (as of Phase 1.7): **sift is the
+snapshot oracle, agx is the navigator, git is the approval signal.**
 
 ## License
 

@@ -173,12 +173,37 @@ release note; silent breaks are bugs.
   Exit: 0 match, 1 no match, 2 error.
 - **`rgx --version`** — stable machine-parseable format.
 
-### sift → public for nobody
+### sift → public for agx (planned, Phase 1.7)
 
-sift is the leaf consumer in the suite. No other tool in the suite reads
-sift's output programmatically. If that changes (e.g., agx surfaces sift
-ledger status in the timeline detail pane — deliberately deferred), add
-the contract to this section before shipping the integration.
+The Phase 1.7 reframe (sift = snapshot oracle, agx = navigator) elevates
+sift from "leaf consumer" to a publishing producer that agx (and any
+other consumer — eval harnesses, third-party tools) can address. The
+contract is sift-side only; agx ships its overlay rendering on its own
+cadence. One-way coupling per §6 rule 5 is preserved: this is a second
+producer→consumer edge, not a bidirectional dependency.
+
+- **`sift export --session <id> --format json`** — emit the full ledger
+  as a stable JSON schema:
+  `{sift_export_version: 1, session_id, started_at, ended_at,
+  transcript_path, turns: [{turn, entries: [LedgerEntry]}]}`. Schema
+  versioned via the integer `sift_export_version`; consumers refuse
+  unknown major versions. Schema documented in
+  `docs/export-schema.md` (sift repo). Stability commitment dates
+  from Phase 1.7 ship.
+- **`sift state --session <id> --at-turn <N> --format json`** — return
+  the file world at turn N as a `path → SHA-1-hex` map. Agx and other
+  consumers compose this twice (turns A and B) to diff the file world
+  between any two arbitrary turns — a primitive nothing else in the
+  AI-dev workflow exposes (git is commit-grain; the agent transcript
+  records intent, not state).
+- **`sift --version`** — stable machine-parseable format
+  (`sift X.Y.Z`). Used by agx (and rgx) `doctor` subcommands once
+  those land.
+
+Until Phase 1.7 ships, this section describes the planned surface; the
+binary today exposes only `sift export --format md` (Phase 0). When
+Phase 1.7 ships, move the planned bullets above to "shipped" and
+update the §10 retrofit table accordingly.
 
 ---
 
@@ -291,7 +316,8 @@ opportunistically when the affected code changes for other reasons.
 |---|---|---|---|
 | agx `doctor` | report siblings | not shipped | Retrofit from sift's `doctor` design (shipped v0.3). |
 | rgx `doctor` | report siblings | not shipped | Same. |
-| agx `--summary` on sift integration | list sift ledger status | no sift awareness | Deferred per rule 5 (one-way coupling). Revisit only if sift validates and users ask. |
+| sift publish surface (export + state) | sift → public for agx | planned Phase 1.7 | Sift-side substrate (`sift export --format json`, `sift state --at-turn N`). When shipped, move §5 sift section from "planned" to "shipped" and close this row. |
+| agx overlay rendering | decorate timeline + diff turn pair | not shipped | Downstream consumer of sift's Phase 1.7 substrate. Agx-side; tracked in agx's roadmap. Sift-side requires no coordination — ships on agx's cadence. |
 
 **Closed (shipped):**
 
