@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 mod cmd_accept;
+mod cmd_ai_help;
 mod cmd_diff;
 mod cmd_doctor;
 mod cmd_export;
@@ -114,23 +115,35 @@ enum Commands {
     /// Open sift review in a new tmux pane (requires tmux).
     Watch,
     /// Wire sift hooks into the current project (or globally). Also
-    /// installs a `.git/hooks/post-commit` that auto-accepts matching
-    /// pending entries — pass `--manual-accept` to skip that step.
+    /// installs a `.git/hooks/post-commit` auto-accept hook and
+    /// appends a sift-aware section to CLAUDE.md so the agent
+    /// discovers sift's commands without user briefing. Use
+    /// `--manual-accept` or `--no-claude-md` to opt out of either.
     Init {
         /// Write hooks to user-level config instead of project-level.
-        /// Skips the post-commit hook install (global hooks can't sit
-        /// in a per-repo .git/hooks/ anyway).
+        /// Skips the post-commit hook and CLAUDE.md install (both are
+        /// per-repo by design).
         #[arg(long)]
         global: bool,
         /// Target tool: claude (default), gemini, or cline.
         #[arg(long, default_value = "claude")]
         tool: String,
         /// Skip installing the `.git/hooks/post-commit` auto-accept
-        /// hook. Power-user flag: if you want `sift accept` to remain
-        /// an explicit step (e.g. for active review workflows).
+        /// hook. Power-user flag: for active-review workflows where
+        /// `sift accept` stays an explicit step.
         #[arg(long)]
         manual_accept: bool,
+        /// Skip appending the sift-aware section to CLAUDE.md. Useful
+        /// when CLAUDE.md is managed by another tool or when the agent
+        /// already knows sift from a workspace-level config.
+        #[arg(long)]
+        no_claude_md: bool,
     },
+    /// Print the sift command cookbook for AI coding assistants —
+    /// "when user says X, run Y." The same content as
+    /// `docs/agent-guide.md`, embedded in the binary so agents can
+    /// self-discover without a path to the repo.
+    AiHelp,
     /// Report sift version, sibling-tool detection (agx, rgx), and stepwise suite integration status.
     Doctor {
         #[arg(long)]
@@ -267,8 +280,12 @@ fn main() -> Result<ExitCode> {
             global,
             tool,
             manual_accept,
+            no_claude_md,
         }) => {
-            cmd_init::run(&cwd, global, &tool, manual_accept)?;
+            cmd_init::run(&cwd, global, &tool, manual_accept, no_claude_md)?;
+        }
+        Some(Commands::AiHelp) => {
+            cmd_ai_help::run()?;
         }
         Some(Commands::Doctor { json }) => {
             cmd_doctor::run(&cwd, json)?;

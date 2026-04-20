@@ -24,7 +24,13 @@ impl ToolTarget {
     }
 }
 
-pub fn run(cwd: &Path, global: bool, tool: &str, manual_accept: bool) -> Result<()> {
+pub fn run(
+    cwd: &Path,
+    global: bool,
+    tool: &str,
+    manual_accept: bool,
+    no_claude_md: bool,
+) -> Result<()> {
     let target = ToolTarget::from_str(tool)?;
 
     match target {
@@ -33,19 +39,84 @@ pub fn run(cwd: &Path, global: bool, tool: &str, manual_accept: bool) -> Result<
         ToolTarget::Cline => init_cline(cwd)?,
     }
 
-    // Project-level init also gets .sift/ in .gitignore and (unless
-    // opted out) the post-commit hook that makes sift an invisible
-    // passive tracking layer — the user never types a sift command
-    // in the common case; `git commit` settles the pending ledger.
+    // Project-level init also gets .sift/ in .gitignore, the
+    // post-commit hook (unless opted out), and the CLAUDE.md
+    // sift section (unless opted out) so agents discover sift's
+    // commands without user briefing.
     if !global {
         ensure_gitignore(cwd)?;
         if !manual_accept {
             install_post_commit_hook(cwd)?;
         }
+        if !no_claude_md {
+            ensure_claude_md_section(cwd)?;
+        }
     }
 
     Ok(())
 }
+
+/// Append a sift-aware section to `CLAUDE.md` (or create it) so the
+/// agent learns sift's command cookbook without per-session user
+/// briefing. Idempotent via the `<!-- SIFT_MANAGED_SECTION -->`
+/// marker pair; existing user-authored CLAUDE.md content is
+/// preserved verbatim.
+fn ensure_claude_md_section(cwd: &Path) -> Result<()> {
+    let path = cwd.join("CLAUDE.md");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+
+    if existing.contains(SIFT_MARKER_OPEN) {
+        println!("  CLAUDE.md already has a sift section");
+        return Ok(());
+    }
+
+    let mut content = existing.clone();
+    if !content.is_empty() && !content.ends_with("\n\n") {
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push('\n');
+    }
+    content.push_str(CLAUDE_MD_SECTION_TEMPLATE);
+
+    fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
+    if existing.is_empty() {
+        println!("  created CLAUDE.md with sift section");
+    } else {
+        println!("  appended sift section to CLAUDE.md");
+    }
+    Ok(())
+}
+
+const SIFT_MARKER_OPEN: &str = "<!-- SIFT_MANAGED_SECTION -->";
+
+/// The CLAUDE.md section sift writes. Kept short on purpose — the
+/// full agent-facing reference lives in `docs/agent-guide.md` and is
+/// emitted by `sift ai-help`. This section is the discovery anchor:
+/// just enough so the agent knows what to reach for when the user
+/// asks a file-history question.
+const CLAUDE_MD_SECTION_TEMPLATE: &str = concat!(
+    "<!-- SIFT_MANAGED_SECTION -->\n",
+    "## File history (sift)\n",
+    "\n",
+    "This project uses [sift](https://github.com/brevity1swos/sift)\n",
+    "to record every file you write, keyed by conversation turn.\n",
+    "When the user asks about file history, reach for these commands\n",
+    "(full cookbook: run `sift ai-help` or see `docs/agent-guide.md`\n",
+    "in the sift repo):\n",
+    "\n",
+    "- \"what did you change in turn N?\" → `sift list --turn N --json`\n",
+    "- \"revert that\" → find id via `sift list --json`, then `sift undo <id-prefix>`\n",
+    "- \"what's different between turn 5 and turn 8?\" → compose two `sift state --at-turn N --format json` calls and diff\n",
+    "- \"what happened to src/foo.rs?\" → `sift log --path src/foo.rs --json`\n",
+    "- \"what's still pending?\" → `sift status --json`\n",
+    "\n",
+    "After `git commit`, the post-commit hook auto-accepts matching\n",
+    "pending entries — no manual `sift accept` needed in the common\n",
+    "case. Divergent entries (file edited between agent write and\n",
+    "commit) stay pending and are worth surfacing to the user.\n",
+    "<!-- /SIFT_MANAGED_SECTION -->\n",
+);
 
 /// Install `.git/hooks/post-commit` that runs
 /// `sift accept --by-commit HEAD --apply --quiet` after each commit.

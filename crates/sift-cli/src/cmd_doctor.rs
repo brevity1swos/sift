@@ -54,9 +54,25 @@ struct SiftInfo {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum PostCommitHookStatus {
+    /// `.git/hooks/post-commit` exists and carries the sift-managed marker.
+    SiftManaged,
+    /// `.git/hooks/post-commit` exists but is not sift's — auto-accept
+    /// won't run (unless the user added the sift line to their own hook).
+    OtherTool,
+    /// No post-commit hook installed. `sift init` (without
+    /// `--manual-accept`) would install one.
+    NotInstalled,
+    /// No `.git/` directory — not a git repository.
+    NoGitRepo,
+}
+
+#[derive(Serialize)]
 struct EnvReport {
     sift_dir_present: bool,
     current_session: Option<String>,
+    post_commit_hook: PostCommitHookStatus,
 }
 
 #[derive(Serialize)]
@@ -142,6 +158,24 @@ fn probe_rgx() -> SiblingInfo {
                 }
             }
         }
+    }
+}
+
+/// Probe the git post-commit hook status in the given project root.
+/// Reads `.git/hooks/post-commit` if present and checks for sift's
+/// `SIFT_MANAGED_HOOK=1` marker.
+fn probe_post_commit_hook(cwd: &Path) -> PostCommitHookStatus {
+    let git_dir = cwd.join(".git");
+    if !git_dir.is_dir() {
+        return PostCommitHookStatus::NoGitRepo;
+    }
+    let hook = git_dir.join("hooks").join("post-commit");
+    match fs::read_to_string(&hook) {
+        Ok(content) if content.contains("SIFT_MANAGED_HOOK=1") => {
+            PostCommitHookStatus::SiftManaged
+        }
+        Ok(_) => PostCommitHookStatus::OtherTool,
+        Err(_) => PostCommitHookStatus::NotInstalled,
     }
 }
 
@@ -235,6 +269,7 @@ pub fn run(cwd: &Path, json: bool) -> Result<()> {
         environment: EnvReport {
             sift_dir_present,
             current_session,
+            post_commit_hook: probe_post_commit_hook(cwd),
         },
     };
 
@@ -282,6 +317,19 @@ fn render_text(r: &DoctorReport) {
     } else if r.environment.sift_dir_present {
         println!("  current session: none");
     }
+    let hook_line = match r.environment.post_commit_hook {
+        PostCommitHookStatus::SiftManaged => {
+            "post-commit hook: installed (sift-managed; commits auto-accept)"
+        }
+        PostCommitHookStatus::OtherTool => {
+            "post-commit hook: present but not sift's (run `sift init` for guidance)"
+        }
+        PostCommitHookStatus::NotInstalled => {
+            "post-commit hook: not installed (run `sift init` to enable auto-accept on commit)"
+        }
+        PostCommitHookStatus::NoGitRepo => "post-commit hook: n/a (no .git directory)",
+    };
+    println!("  {hook_line}");
 }
 
 fn render_sibling(name: &str, info: &SiblingInfo) {
@@ -327,6 +375,7 @@ mod tests {
             environment: EnvReport {
                 sift_dir_present: true,
                 current_session: Some("01HXXX".into()),
+                post_commit_hook: PostCommitHookStatus::SiftManaged,
             },
         };
         let json = serde_json::to_string(&report).expect("serialize");
