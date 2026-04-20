@@ -125,7 +125,7 @@ Rules are evaluated top-to-bottom; first match wins. Default is `allow`.
 
 - **[rgx](https://github.com/brevity1swos/rgx)** — terminal regex
   debugger. Sift will use rgx for interactive policy-rule debugging
-  (planned, v0.4): iterate on a `.sift/policy.yml` pattern with
+  (planned, v0.5): iterate on a `.sift/policy.yml` pattern with
   step-through visibility before committing the rule.
 - **[agx](https://github.com/brevity1swos/agx)** — terminal agent
   session viewer. Sift's `t` keybind in `sift review` hands off to
