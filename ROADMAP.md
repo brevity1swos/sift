@@ -306,6 +306,206 @@ comes first.
 
 ---
 
+## Phase 1.7 — v0.5: Snapshot-as-substrate (sift → agx publishing surface)
+
+**Status: proposed 2026-04-19.** Emerged from a session-end design
+conversation that reframed sift's value: rather than the current
+"writable sibling of agx" pitch, sift is **the snapshot oracle for
+the agent's per-turn file world**, with agx as the navigator that
+addresses it and git as the coarse approval signal that closes the
+loop. This phase ships the sift-side primitives that make the
+framing real; consumer code (agx overlay, eval scripts, third-party
+tools) can land later on its own cadence with no sift-side
+coordination.
+
+**Goal:** Three sift commands that turn sift's content-addressed
+snapshot store into a queryable substrate for any consumer:
+
+1. **`sift state --at-turn N`** — return the file world at a chosen
+   turn as a `path → SHA-1` map. The new diff primitive: any two
+   turns A and B can be diffed by composing this twice.
+2. **`sift export --format json`** — emit the full ledger as a stable
+   schema so agx (and anything else) can consume sift's per-turn
+   record. Promotes Phase 4.3's deferred export to here, with a
+   schema-stability commitment.
+3. **`sift accept --by-commit <ref>`** — close the git/sift grain
+   gap. After a `git commit`, accept every pending entry whose
+   post-state matches what was committed. Removes the
+   "approve once for sift, again for git" workflow tax.
+
+**Why this fits before the Phase 1.4 validation gate:** all three
+subplans are sift-side and git-side only. Zero agx code changes.
+Doesn't depend on whether `t` (Phase 1.3) lands as load-bearing in
+dogfood. Cuts per-commit double-approval friction and ships the
+deferred export contract early — both of which the dogfood would
+surface as friction anyway. The reframe also makes the dogfood
+itself sharper: `sift state` lets the maintainer answer
+*"what changed in the file world between turn 5 and turn 8?"*
+without scrolling the transcript or running a coarse `git diff`.
+
+### Non-goals
+
+- **No agx changes.** Agx-side overlay rendering (decorating
+  timeline steps with sift status, time-travel diff between two
+  agx-selected turns) is documented as a downstream consumer in
+  agx's own roadmap; it ships on agx's cadence, not sift's.
+- **No automatic acceptance on commit.** `sift accept --by-commit`
+  is an opt-in subcommand, not a `post-commit` git hook. Sift
+  listens to git, never inserts into git — preserves the
+  "git is read-only for sift" guiding principle.
+- **No cross-turn merge logic.** `sift state` returns the current
+  state for paths in the chosen turn-range; if a path was written
+  multiple times, the latest `snapshot_after` wins (no three-way
+  merge attempt). Reverted entries excluded by default; flag to
+  include them for "what would have happened" analysis.
+- **No "infer which turns belong to which commit" magic.** The
+  `--by-commit` join is path + content-hash only. If the file
+  diverged from `snapshot_after` since the agent wrote it, the
+  entry stays pending with an explicit hint, not a guess.
+
+### Subplans
+
+**1.7.1 — `sift state --session <id> --at-turn <N>`** (foundation)
+- [ ] New subcommand. Folds the ledger sorted by turn ascending,
+      keeps the latest `snapshot_after` per path for entries with
+      `turn ≤ N` and `status != Reverted`. Output: JSON map of
+      `{path: snapshot_hash}`.
+- [ ] `--include-reverted` flag (default off): include reverted
+      writes when reconstructing state. Useful for "what would the
+      world have looked like if I'd accepted everything?"
+- [ ] `--baseline` flag: instead of state-at-turn-N, return the
+      pre-state map (each path's `snapshot_before` from its first
+      appearance). Provides the comparison endpoint for diffs.
+- [ ] Tests: empty session (returns `{}`), single-turn session,
+      multi-turn with override (latest write per path wins),
+      reverted entries excluded by default, `--include-reverted`
+      includes them, `--baseline` returns pre-states.
+
+**1.7.2 — `sift export --session <id> --format json`** (publish surface)
+- [ ] Lift from Phase 4.3. Emit the full ledger as a stable schema:
+      `{sift_export_version: 1, session_id, started_at, ended_at,
+      transcript_path, turns: [{turn, entries: [LedgerEntry]}]}`.
+- [ ] Schema versioned via top-level `sift_export_version` integer.
+      Breaking changes bump the version; consumers refuse to parse
+      unknown major versions.
+- [ ] Document the schema in `docs/export-schema.md`. The
+      stability commitment dates from Phase 1.7 ship; downstream
+      consumers (agx, eval harnesses, third-party tools) can
+      build against it.
+- [ ] **Suite-conventions §5 update:** sift → public for agx via
+      `sift export --format json` and `sift state --format json`.
+      §10 retrofit row "agx --summary on sift integration" moves
+      from "deferred per rule 5" to a paired entry: agx-side row
+      stays open ("agx ships overlay rendering"), sift-side row
+      closes ("sift publishes export + state").
+- [ ] Kill criterion: if no consumer (agx overlay, eval script,
+      third-party) ships against this schema within 6 months, drop
+      the schema-stability commitment and downgrade the export to
+      experimental.
+
+**1.7.3 — `sift accept --by-commit <ref>`** (close the git/sift grain gap)
+- [ ] New subcommand variant. Default ref: `HEAD`.
+- [ ] Algorithm: shell out to
+      `git diff <ref>~..<ref> --name-only` → set of paths. For each
+      pending entry whose `path` is in that set: SHA-1 the current
+      file contents and compare to `snapshot_after`. Match → accept.
+      Mismatch → leave pending with a status-bar-style hint
+      ("file changed since the agent wrote it; review manually").
+- [ ] Paths the commit touched but no pending entry matches →
+      ignored silently (these are the user's own edits, not the
+      agent's).
+- [ ] `--dry-run` is the default; `--apply` actually finalizes.
+      Same posture as `sift gc` and `sift sweep`.
+- [ ] Tests: clean case (commit covers all pending), partial
+      coverage (commit covers a subset), divergent contents
+      (file edited post-write), no-match (commit unrelated to
+      pending), `--dry-run` does not mutate, refuses cleanly when
+      not in a git repo.
+
+### Dependencies
+
+- **None upstream.** Pure sift-side work plus a `git diff`
+  shell-out. No agx changes. No new runtime crates (uses existing
+  `Command` for git, existing serde_json for export).
+- Does **not** depend on Phase 1.4 validation. Ships orthogonally
+  to whether `t` (Phase 1.3) earns its keep.
+
+### Feeds
+
+- **Phase 4.5 (comparison mode) collapses into "use `sift state`
+  twice across sessions and diff."** Old 4.5 marked subsumed below.
+- **Phase 4.3 (`sift export --format patch`)** keeps the patch
+  variant; the JSON-export bullet moves up to 1.7.2.
+- **Future agx overlay** (downstream, not in sift's roadmap):
+  agx renders sift status as decoration on each timeline step;
+  agx supports "diff turn A vs turn B" by calling `sift state`
+  twice. Tracked in agx's roadmap when it lands. No sift-side
+  coordination required.
+- **Phase 1.4 validation itself**: `sift state` plus
+  `--by-commit` give the maintainer sharper questions to ask
+  during dogfood — "did I reach for `sift state --at-turn N` when
+  comparing two points in the conversation?" is a falsifiable
+  signal alongside the existing `t`-keybind one.
+
+### Acceptance
+
+A user with sift on PATH and a 10-turn agent session can:
+
+1. Run `sift state --at-turn 5 > a.json` and
+   `sift state --at-turn 8 > b.json`, then
+   `diff <(jq -S . a.json) <(jq -S . b.json)` to see exactly which
+   paths' content hashes differ between turn 5 and turn 8.
+2. After `git commit -m "..."`, run
+   `sift accept --by-commit HEAD --apply` and have every pending
+   entry whose post-state matches the committed file content
+   accepted, with any divergent entries kept pending and flagged
+   with a one-line hint.
+3. Run `sift export --format json | jq '.turns[] | length'` and
+   get per-turn entry counts; the JSON validates against
+   `docs/export-schema.md`.
+
+### Why this matters more than the current pitch
+
+The current "writable sibling of agx" framing sells the binary
+accept/revert decision. What this phase exposes is sharper:
+**sift's snapshot store is the only thing in the AI-dev workflow
+that lets you pick two arbitrary points in an agent's execution
+and ask "what changed in the file world between these two?"**
+Git can't (commit-grain, decoupled from agent turns). The agent
+transcript can't (records intent, not state). Existing diff
+tools can't (operate on file pairs, not world states).
+
+With `sift state`, agx becomes a time-travel navigator over the
+agent's file actions. With `sift accept --by-commit`, sift stops
+double-billing the user for approval that git already recorded.
+With `sift export`, the snapshot store becomes addressable by
+any consumer.
+
+The three-layer reframe these subplans enable:
+
+- **sift** = per-turn snapshot oracle for the agent's file world
+- **agx** = navigator that addresses it (timeline + corpus + diff)
+- **git** = coarse approval signal that closes the loop
+
+This is a sharper positioning than the current "three independent
+siblings that compose." The siblings stay independent at the code
+level (one-way coupling per direction; no shared crate), but
+their roles in the user's workflow are now clearly stacked.
+
+### When to kill
+
+- If `sift export --format json` finds no consumer in 6 months,
+  drop the schema-stability commitment (subplan 1.7.2 kill
+  criterion).
+- If `sift accept --by-commit` is unused after the first 3
+  releases that ship it, drop it; it was workflow theater rather
+  than friction relief.
+- If `sift state` is unused, drop the public subcommand but keep
+  the internal fold logic (`reconstruct_state_at_turn`) — it
+  becomes plumbing for other commands eventually.
+
+---
+
 ## Phase 2 — v0.4: Policy Patterns (rgx integration)
 
 **Goal:** Make policy rules expressive enough to cover realistic project
@@ -444,7 +644,23 @@ export reviewed-only patches, gate CI on pending reviews.
 
 ---
 
-## Phase 4.5 — v0.6.x: Comparison Mode (candidate, gated on Phase 1 validation)
+## Phase 4.5 — v0.6.x: Comparison Mode (subsumed by Phase 1.7)
+
+**STATUS UPDATE 2026-04-19 (later same day):** Subsumed by Phase 1.7's
+`sift state --at-turn N` primitive. The comparison-mode pitch — "diff
+the file world between two prompt variants run against the same
+baseline" — is now a special case of `sift state`: call it twice
+across two sessions instead of two turns within one session, then diff
+the resulting `path → SHA-1` maps. Same primitive, different inputs.
+
+This section remains as historical context for the framing
+conversation that led to Phase 1.7. The actual implementation lives
+there. The "session labels" + "baseline reset" subplans below are
+still useful and would land as ergonomics on top of `sift state` —
+relabel them as candidate sub-bullets under Phase 1.7's downstream
+work, or revisit if the dogfood surfaces explicit demand.
+
+Original framing follows for posterity:
 
 **Status: proposed 2026-04-19.** Candidate phase raised during the Phase 1
 dogfood conversation. Not on the critical path until the validation in
