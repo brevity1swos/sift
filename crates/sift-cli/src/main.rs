@@ -6,6 +6,7 @@ use std::process::ExitCode;
 mod cmd_accept;
 mod cmd_diff;
 mod cmd_doctor;
+mod cmd_export;
 mod cmd_fsck;
 mod cmd_gc;
 mod cmd_history;
@@ -106,6 +107,17 @@ enum Commands {
     Doctor {
         #[arg(long)]
         json: bool,
+    },
+    /// Emit the session ledger as schema-stable JSON for downstream consumers
+    /// (agx overlay, eval harnesses, third-party tools). Versioned via
+    /// `sift_export_version` integer.
+    Export {
+        #[arg(long)]
+        session: Option<String>,
+        /// Output format. Currently `json` only; `md` / `patch` / `bundle`
+        /// are reserved for Phase 4.3.
+        #[arg(long, default_value = "json")]
+        format: String,
     },
     /// Reconstruct the file world at a chosen turn as a path → SHA-1 JSON map.
     /// Compose twice (turns A and B) to diff the file world between any two turns.
@@ -214,6 +226,9 @@ fn main() -> Result<ExitCode> {
         }
         Some(Commands::Doctor { json }) => {
             cmd_doctor::run(&cwd, json)?;
+        }
+        Some(Commands::Export { session, format }) => {
+            cmd_export::run(&cwd, session, &format)?;
         }
         Some(Commands::State {
             session,

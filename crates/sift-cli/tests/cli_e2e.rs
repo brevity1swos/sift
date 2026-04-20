@@ -326,6 +326,61 @@ fn state_baseline_returns_pre_states() {
     );
 }
 
+#[test]
+fn export_json_emits_versioned_schema_with_grouped_turns() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    fs::create_dir_all(td.path().join("src")).unwrap();
+
+    bump_turn(&td);
+    write_via_hook(&td, "src/a.rs", b"first");
+    bump_turn(&td);
+    write_via_hook(&td, "src/b.rs", b"second");
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["export", "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "export should succeed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    // Top-level shape — version + entry/turn counts + turns array.
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("export must produce valid JSON");
+    assert_eq!(v["sift_export_version"], 1, "version must be 1");
+    assert_eq!(v["entry_count"], 2, "two writes recorded");
+    assert_eq!(v["turn_count"], 2, "two distinct turns");
+    assert!(v["turns"].is_array());
+    assert_eq!(v["turns"].as_array().unwrap().len(), 2);
+
+    // Turns sorted ascending; src/a.rs in the first turn.
+    assert_eq!(v["turns"][0]["turn"].as_u64().unwrap(), 1);
+    assert_eq!(v["turns"][1]["turn"].as_u64().unwrap(), 2);
+    let first_path = v["turns"][0]["entries"][0]["path"].as_str().unwrap();
+    assert_eq!(first_path, "src/a.rs");
+}
+
+#[test]
+fn export_unknown_format_errors_cleanly() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["export", "--format", "xml"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "xml format should error");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown format") || stderr.contains("'xml'"),
+        "stderr should explain the unknown format: {stderr}"
+    );
+}
+
 /// Simulate a UserPromptSubmit hook to bump the session turn counter.
 fn bump_turn(td: &TempDir) {
     let event = serde_json::json!({
