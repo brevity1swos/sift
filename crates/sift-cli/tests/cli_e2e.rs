@@ -381,6 +381,174 @@ fn export_unknown_format_errors_cleanly() {
     );
 }
 
+#[test]
+fn accept_by_commit_dry_run_reports_match_without_finalizing() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    init_git(&td);
+    fs::create_dir_all(td.path().join("src")).unwrap();
+
+    bump_turn(&td);
+    write_via_hook(&td, "src/a.rs", b"first");
+
+    git(&td, &["add", "."]);
+    git(&td, &["commit", "-q", "-m", "initial"]);
+
+    // Dry-run (no --apply): pending stays pending.
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["accept", "--by-commit", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "dry-run should succeed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("1 entries match"), "stdout: {stdout}");
+    assert!(stdout.contains("dry-run"), "should mention dry-run: {stdout}");
+
+    // Pending still has the entry.
+    let list = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--json"])
+        .output()
+        .unwrap();
+    let list_stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        list_stdout.contains("src/a.rs"),
+        "entry must still be pending after dry-run: {list_stdout}"
+    );
+}
+
+#[test]
+fn accept_by_commit_apply_finalizes_matching_entries() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    init_git(&td);
+    fs::create_dir_all(td.path().join("src")).unwrap();
+
+    bump_turn(&td);
+    write_via_hook(&td, "src/a.rs", b"first");
+    write_via_hook(&td, "src/b.rs", b"second");
+
+    git(&td, &["add", "."]);
+    git(&td, &["commit", "-q", "-m", "both"]);
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["accept", "--by-commit", "HEAD", "--apply"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "apply should succeed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("accepted 2"), "stdout: {stdout}");
+
+    // Pending empty; ledger has two accepted entries.
+    let list = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--json"])
+        .output()
+        .unwrap();
+    let list_stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        list_stdout.trim() == "[]",
+        "pending must be empty: {list_stdout}"
+    );
+}
+
+#[test]
+fn accept_by_commit_divergent_entry_stays_pending() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    init_git(&td);
+    fs::create_dir_all(td.path().join("src")).unwrap();
+
+    bump_turn(&td);
+    // Agent wrote "first"; sift recorded post-state hash for "first".
+    write_via_hook(&td, "src/a.rs", b"first");
+    // User edited the file AFTER the agent's write but before commit.
+    fs::write(td.path().join("src/a.rs"), b"user-edited").unwrap();
+
+    git(&td, &["add", "."]);
+    git(&td, &["commit", "-q", "-m", "user-edited"]);
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["accept", "--by-commit", "HEAD", "--apply"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("diverged"),
+        "divergence must be surfaced: {stdout}"
+    );
+    assert!(
+        stdout.contains("0 entries match") || stdout.contains("accepted 0"),
+        "nothing should be auto-accepted when divergent: {stdout}"
+    );
+
+    // Entry stays pending — user's attention is needed.
+    let list = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending"])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&list.stdout).contains("src/a.rs"),
+        "divergent entry must stay pending"
+    );
+}
+
+#[test]
+fn accept_by_commit_ignores_commit_paths_without_matching_pending() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    init_git(&td);
+    fs::create_dir_all(td.path().join("src")).unwrap();
+
+    // User creates a file themselves (no agent write → no sift entry).
+    fs::write(td.path().join("src/user_only.rs"), b"user wrote this").unwrap();
+
+    git(&td, &["add", "."]);
+    git(&td, &["commit", "-q", "-m", "user-only"]);
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["accept", "--by-commit", "HEAD", "--apply"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // "0 entries match" + "1 committed paths had no matching pending"
+    // is the right summary for a user-only commit.
+    assert!(
+        stdout.contains("had no matching pending entry"),
+        "must report ignored commit paths: {stdout}"
+    );
+}
+
+fn init_git(td: &TempDir) {
+    git(td, &["init", "-q"]);
+    git(td, &["config", "user.email", "test@example.com"]);
+    git(td, &["config", "user.name", "sift-test"]);
+    git(td, &["config", "commit.gpgsign", "false"]);
+}
+
+fn git(td: &TempDir, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(td.path())
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?} should succeed");
+}
+
 /// Simulate a UserPromptSubmit hook to bump the session turn counter.
 fn bump_turn(td: &TempDir) {
     let event = serde_json::json!({

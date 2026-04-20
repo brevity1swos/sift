@@ -60,9 +60,28 @@ enum Commands {
     /// Show a unified diff for a specific entry.
     #[command(visible_alias = "d")]
     Diff { id: String },
-    /// Accept pending entries (by id prefix, turn-N, or "all").
+    /// Accept pending entries. Either pass a target (`all`, `turn-N`, or an
+    /// id prefix) OR use `--by-commit <ref>` to accept everything the given
+    /// git commit endorsed (path + content-hash match).
     #[command(visible_alias = "ok")]
-    Accept { target: String },
+    Accept {
+        /// Accept target: `all`, `turn-N`, or an id prefix. Ignored when
+        /// `--by-commit` is set.
+        #[arg(default_value = "")]
+        target: String,
+        /// Accept every pending entry whose path is in this git commit
+        /// AND whose post-state hash matches the committed file. Leaves
+        /// diverged entries pending with a hint.
+        #[arg(long)]
+        by_commit: Option<String>,
+        /// Required when `--by-commit` is set (otherwise dry-run).
+        #[arg(long)]
+        apply: bool,
+        /// Suppress human-readable output. Used by the post-commit git hook
+        /// installed by `sift init` so normal commits don't spam the terminal.
+        #[arg(long)]
+        quiet: bool,
+    },
     /// Revert pending entries (restores previous file state).
     #[command(visible_alias = "undo")]
     Revert { target: String },
@@ -179,8 +198,22 @@ fn main() -> Result<ExitCode> {
         Some(Commands::Diff { id }) => {
             cmd_diff::run(&cwd, id)?;
         }
-        Some(Commands::Accept { target }) => {
-            cmd_accept::run(&cwd, target)?;
+        Some(Commands::Accept {
+            target,
+            by_commit,
+            apply,
+            quiet,
+        }) => {
+            if let Some(git_ref) = by_commit {
+                cmd_accept::run_by_commit(&cwd, &git_ref, apply, quiet)?;
+            } else {
+                if target.is_empty() {
+                    anyhow::bail!(
+                        "sift accept needs a target (`all`, `turn-N`, id prefix) or --by-commit <ref>"
+                    );
+                }
+                cmd_accept::run(&cwd, target)?;
+            }
         }
         Some(Commands::Revert { target }) => {
             cmd_revert::run(&cwd, target)?;

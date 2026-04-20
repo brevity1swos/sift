@@ -19,6 +19,27 @@ use ulid::Ulid;
 
 use crate::paths::Paths;
 
+/// SHA-1 hex of arbitrary bytes. Matches the hashing scheme sift uses
+/// internally for `LedgerEntry.snapshot_after` and the content-
+/// addressed blob store. Public so `sift accept --by-commit` can
+/// compare a file's current content against the post-state hash sift
+/// recorded at the agent's write.
+pub fn sha1_hex(content: &[u8]) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(content);
+    format!("{:x}", hasher.finalize())
+}
+
+/// SHA-1 hex of the file at `path`. Returns an I/O error (not a hash)
+/// when the file is missing — caller decides whether that's a hard
+/// error (file was deleted between the agent's write and the commit)
+/// or a benign one (Delete-op entry, nothing on disk to hash).
+pub fn sha1_of_file(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)
+        .with_context(|| format!("reading {} for SHA-1", path.display()))?;
+    Ok(sha1_hex(&bytes))
+}
+
 pub struct SnapshotStore<'a> {
     paths: &'a Paths,
     session_id: &'a str,
@@ -90,12 +111,6 @@ impl<'a> SnapshotStore<'a> {
             .with_context(|| format!("quarantining {path:?} -> {dest:?} (actual={actual_hash})"))?;
         Ok(dest)
     }
-}
-
-fn sha1_hex(content: &[u8]) -> String {
-    let mut hasher = Sha1::new();
-    hasher.update(content);
-    hex::encode(hasher.finalize())
 }
 
 #[cfg(test)]
