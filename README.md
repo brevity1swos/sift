@@ -50,13 +50,13 @@ Bash-tool file mutations are also captured.
 The layers are independent — sift earns its keep without agx, agx without
 sift, both without git — but the value compounds when stacked. The sharpest
 move sift unlocks: pick any two turns A and B, ask "what changed in the file
-world between them" (Phase 1.7, in progress).
+world between them" (Phase 1.7, shipped).
 
 ## What this is not
 
 - **Not a git replacement.** sift operates *between* commits at per-turn
   grain; git remains the human's coarse approval signal. The intended workflow
-  is `git commit` → `sift accept --by-commit` (closes the grain gap; planned
+  is `git commit` → `sift accept --by-commit` (closes the grain gap; shipped
   Phase 1.7).
 - **Not a linter or security scanner.** sift tracks *what* changed, not
   whether it's safe.
@@ -129,11 +129,10 @@ natural-language requests. Full reference: [`docs/agent-guide.md`](docs/agent-gu
 | "what's still pending review?" | `sift status --json` |
 | "are agx and rgx wired up?" | `sift doctor --json` |
 
-After `git commit`, the agent (or the post-commit hook installed by
-`sift init --auto-accept-on-commit`) runs
+After `git commit`, the agent (or the post-commit hook that `sift init`
+installs by default — opt out with `--manual-accept`) runs
 `sift accept --by-commit HEAD --apply --quiet` so the pending list
-clears for the writes git already settled. (Phase 1.7.3 — planned
-v0.5.)
+clears for the writes git already settled. (Phase 1.7.3 — shipped.)
 
 ## TUI keybindings (`sift review`) — power-user escape hatch
 
@@ -197,16 +196,16 @@ Rules are evaluated top-to-bottom; first match wins. Default is `allow`.
 The full three-layer stack:
 
 - **git** is the coarse approval signal. Use `sift accept --by-commit
-  HEAD` (planned Phase 1.7) after each commit to settle the per-turn
+  HEAD` (shipped Phase 1.7) after each commit to settle the per-turn
   ledger against what git already considers approved. Removes the
   "approve once for sift, again for git" workflow tax.
 - **[agx](https://github.com/brevity1swos/agx)** — the navigator
   layer above sift. Sift's `t` keybind in `sift review` hands off to
   agx on the current session's transcript (shipped session-level in
-  v0.3; step-level awaits agx `--jump-to`). When sift's
-  `sift export --format json` ships (Phase 1.7), agx will be able
-  to overlay sift status on each timeline step and diff the file
-  world between any two turns the user navigates to.
+  v0.3; step-level awaits agx `--jump-to`). sift's
+  `sift export --format json` (shipped Phase 1.7) lets agx overlay
+  sift status on each timeline step and diff the file world between
+  any two turns the user navigates to, once agx ships the consumer side.
 - **[rgx](https://github.com/brevity1swos/rgx)** — terminal regex
   debugger. Sift will use rgx for interactive policy-rule debugging
   (planned, v0.5): iterate on a `.sift/policy.yml` pattern with

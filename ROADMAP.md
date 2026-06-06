@@ -364,7 +364,10 @@ comes first.
 
 ## Phase 1.7 — v0.5: Snapshot-as-substrate (sift → agx publishing surface)
 
-**Status: proposed 2026-04-19.** Emerged from a session-end design
+**Status: SHIPPED 2026-04-19** (verified against the working tree
+2026-06-06: all three subcommands land, `docs/export-schema.md`
+exists, 190 workspace tests pass, clippy clean). Emerged from a
+session-end design
 conversation that reframed sift's value: rather than the current
 "writable sibling of agx" pitch, sift is **the snapshot oracle for
 the agent's per-turn file world**, with agx as the navigator that
@@ -422,33 +425,33 @@ without scrolling the transcript or running a coarse `git diff`.
 ### Subplans
 
 **1.7.1 — `sift state --session <id> --at-turn <N>`** (foundation)
-- [ ] New subcommand. Folds the ledger sorted by turn ascending,
+- [x] New subcommand. Folds the ledger sorted by turn ascending,
       keeps the latest `snapshot_after` per path for entries with
       `turn ≤ N` and `status != Reverted`. Output: JSON map of
       `{path: snapshot_hash}`.
-- [ ] `--include-reverted` flag (default off): include reverted
+- [x] `--include-reverted` flag (default off): include reverted
       writes when reconstructing state. Useful for "what would the
       world have looked like if I'd accepted everything?"
-- [ ] `--baseline` flag: instead of state-at-turn-N, return the
+- [x] `--baseline` flag: instead of state-at-turn-N, return the
       pre-state map (each path's `snapshot_before` from its first
       appearance). Provides the comparison endpoint for diffs.
-- [ ] Tests: empty session (returns `{}`), single-turn session,
+- [x] Tests: empty session (returns `{}`), single-turn session,
       multi-turn with override (latest write per path wins),
       reverted entries excluded by default, `--include-reverted`
       includes them, `--baseline` returns pre-states.
 
 **1.7.2 — `sift export --session <id> --format json`** (publish surface)
-- [ ] Lift from Phase 4.3. Emit the full ledger as a stable schema:
+- [x] Lift from Phase 4.3. Emit the full ledger as a stable schema:
       `{sift_export_version: 1, session_id, started_at, ended_at,
       transcript_path, turns: [{turn, entries: [LedgerEntry]}]}`.
-- [ ] Schema versioned via top-level `sift_export_version` integer.
+- [x] Schema versioned via top-level `sift_export_version` integer.
       Breaking changes bump the version; consumers refuse to parse
       unknown major versions.
-- [ ] Document the schema in `docs/export-schema.md`. The
+- [x] Document the schema in `docs/export-schema.md`. The
       stability commitment dates from Phase 1.7 ship; downstream
       consumers (agx, eval harnesses, third-party tools) can
       build against it.
-- [ ] **Suite-conventions §5 update:** sift → public for agx via
+- [x] **Suite-conventions §5 update:** sift → public for agx via
       `sift export --format json` and `sift state --format json`.
       §10 retrofit row "agx --summary on sift integration" moves
       from "deferred per rule 5" to a paired entry: agx-side row
@@ -460,19 +463,19 @@ without scrolling the transcript or running a coarse `git diff`.
       experimental.
 
 **1.7.3 — `sift accept --by-commit <ref>`** (close the git/sift grain gap)
-- [ ] New subcommand variant. Default ref: `HEAD`.
-- [ ] Algorithm: shell out to
+- [x] New subcommand variant. Default ref: `HEAD`.
+- [x] Algorithm: shell out to
       `git diff <ref>~..<ref> --name-only` → set of paths. For each
       pending entry whose `path` is in that set: SHA-1 the current
       file contents and compare to `snapshot_after`. Match → accept.
       Mismatch → leave pending with a status-bar-style hint
       ("file changed since the agent wrote it; review manually").
-- [ ] Paths the commit touched but no pending entry matches →
+- [x] Paths the commit touched but no pending entry matches →
       ignored silently (these are the user's own edits, not the
       agent's).
-- [ ] `--dry-run` is the default; `--apply` actually finalizes.
+- [x] `--dry-run` is the default; `--apply` actually finalizes.
       Same posture as `sift gc` and `sift sweep`.
-- [ ] Tests: clean case (commit covers all pending), partial
+- [x] Tests: clean case (commit covers all pending), partial
       coverage (commit covers a subset), divergent contents
       (file edited post-write), no-match (commit unrelated to
       pending), `--dry-run` does not mutate, refuses cleanly when

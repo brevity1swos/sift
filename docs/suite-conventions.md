@@ -173,7 +173,7 @@ release note; silent breaks are bugs.
   Exit: 0 match, 1 no match, 2 error.
 - **`rgx --version`** — stable machine-parseable format.
 
-### sift → public for agx (planned, Phase 1.7)
+### sift → public for agx (shipped, Phase 1.7)
 
 The Phase 1.7 reframe (sift = snapshot oracle, agx = navigator) elevates
 sift from "leaf consumer" to a publishing producer that agx (and any
@@ -200,10 +200,11 @@ producer→consumer edge, not a bidirectional dependency.
   (`sift X.Y.Z`). Used by agx (and rgx) `doctor` subcommands once
   those land.
 
-Until Phase 1.7 ships, this section describes the planned surface; the
-binary today exposes only `sift export --format md` (Phase 0). When
-Phase 1.7 ships, move the planned bullets above to "shipped" and
-update the §10 retrofit table accordingly.
+This surface shipped in Phase 1.7 (2026-04-19): the binary exposes
+`sift export --format json` and `sift state --at-turn N --format json`
+as documented above, with the schema in `docs/export-schema.md`. The
+§10 retrofit table has been updated (sift-side row closed; agx-side
+overlay rendering remains open as a downstream consumer).
 
 ---
 
@@ -316,11 +317,14 @@ opportunistically when the affected code changes for other reasons.
 |---|---|---|---|
 | agx `doctor` | report siblings | not shipped | Retrofit from sift's `doctor` design (shipped v0.3). |
 | rgx `doctor` | report siblings | not shipped | Same. |
-| sift publish surface (export + state) | sift → public for agx | planned Phase 1.7 | Sift-side substrate (`sift export --format json`, `sift state --at-turn N`). When shipped, move §5 sift section from "planned" to "shipped" and close this row. |
 | agx overlay rendering | decorate timeline + diff turn pair | not shipped | Downstream consumer of sift's Phase 1.7 substrate. Agx-side; tracked in agx's roadmap. Sift-side requires no coordination — ships on agx's cadence. |
 
 **Closed (shipped):**
 
+- sift publish surface (`sift export --format json` + `sift state
+  --at-turn N`): shipped Phase 1.7. §5 sift section moved from
+  "planned" to "shipped". agx-side overlay rendering remains open as
+  a downstream consumer (row above), needs no sift coordination.
 - sift accept key (`Enter` / `Space`): additive alias shipped v0.3;
   legacy `a`=accept removed in v0.4. Recorded in §1.
 - sift annotate key (`a`): flipped from `n` in v0.4. Recorded in §1.
