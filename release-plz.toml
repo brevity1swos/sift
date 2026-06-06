@@ -1,0 +1,23 @@
+# release-plz.toml — version + changelog automation, no crates.io publish.
+#
+# Posture (chosen 2026-06-06): release-plz manages version bumps, the
+# CHANGELOG, git tags, and GitHub Releases — but does NOT publish to
+# crates.io (`publish = false`). sift is still v0.1.0 and unpublished.
+# The crates were renamed for crates.io availability (sift-cli -> sift-tui
+# binary crate, sift-core -> siftcore, internal TUI lib -> sift-render;
+# sift-hook unchanged) and path deps now carry version fields, so the
+# workspace is publish-ready. Publishing stays deferred deliberately.
+# To ship to crates.io later: set CARGO_REGISTRY_TOKEN and flip
+# `publish = true` (per-package if only the binary + core should publish).
+#
+# release_commits mirrors agx/ccr: only feat/fix/perf/refactor and
+# docs(readme) warrant a release PR. chore/style/test/ci/build and
+# generic docs: are excluded as internal plumbing.
+
+[workspace]
+changelog_config = "cliff.toml"
+allow_dirty = true
+git_release_enable = true
+git_tag_enable = true
+publish = false
+release_commits = "^(feat|fix|perf|refactor|docs?\\(readme\\))[(:!]"
