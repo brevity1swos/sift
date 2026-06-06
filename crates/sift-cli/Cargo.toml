@@ -1,5 +1,8 @@
+# `sift-cli` is squatted on crates.io; this user-facing binary crate
+# publishes as `sift-tui` (mirrors agx → agx-tui). The installed binary
+# is still invoked as `sift` (see [[bin]] below).
 [package]
-name = "sift-cli"
+name = "sift-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,8 +19,8 @@ crossterm.workspace = true
 dirs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sift-core = { path = "../sift-core" }
-sift-tui = { path = "../sift-tui" }
+siftcore = { path = "../sift-core", version = "0.1.0" }
+sift-render = { path = "../sift-tui", version = "0.1.0" }
 
 [dev-dependencies]
 assert_cmd.workspace = true

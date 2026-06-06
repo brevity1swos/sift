@@ -1,8 +1,14 @@
 [package]
-name = "sift-core"
+name = "siftcore"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+# `sift-core` is squatted on crates.io, so the package publishes as
+# `siftcore`. The lib name stays `sift_core` so every `use sift_core::`
+# import across the workspace is untouched.
+[lib]
+name = "sift_core"
 
 [dependencies]
 anyhow.workspace = true

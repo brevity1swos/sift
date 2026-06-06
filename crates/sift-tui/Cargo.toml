@@ -1,15 +1,21 @@
+# The published binary crate takes the name `sift-tui` (mirrors agx-tui),
+# so this internal TUI-rendering lib publishes as `sift-render`. Lib name
+# stays `sift_tui` to keep its one `use sift_tui::` consumer untouched.
 [package]
-name = "sift-tui"
+name = "sift-render"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[lib]
+name = "sift_tui"
 
 [dependencies]
 anyhow.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 serde_json.workspace = true
-sift-core = { path = "../sift-core" }
+siftcore = { path = "../sift-core", version = "0.1.0" }
 
 [dev-dependencies]
 tempfile.workspace = true
