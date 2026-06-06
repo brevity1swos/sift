@@ -24,9 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      # cargo publish (>=1.66) blocks until the crate is visible in the
-      # index before returning, so dependents can publish right after.
-      - run: cargo publish -p siftcore
-      - run: cargo publish -p sift-render
-      - run: cargo publish -p sift-hook
+      # siftcore / sift-render / sift-hook are already on crates.io from
+      # the first run; only sift-tui remains (its publish failed on an
+      # out-of-crate include_str!, fixed in build: bundle agent-guide.md).
       - run: cargo publish -p sift-tui
