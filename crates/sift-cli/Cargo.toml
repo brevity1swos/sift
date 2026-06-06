@@ -6,6 +6,10 @@ name = "sift-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Per-turn snapshot oracle for your AI agent's file world — capture and revert agent file writes by conversation turn. Installs the `sift` binary."
+keywords = ["ai", "agent", "snapshot", "cli", "tui"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "sift"

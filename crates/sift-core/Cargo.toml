@@ -3,6 +3,10 @@ name = "siftcore"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Core snapshot-ledger library for sift — content-addressed per-turn capture of AI-agent file writes."
+keywords = ["ai", "agent", "snapshot", "ledger"]
+categories = ["development-tools"]
 
 # `sift-core` is squatted on crates.io, so the package publishes as
 # `siftcore`. The lib name stays `sift_core` so every `use sift_core::`

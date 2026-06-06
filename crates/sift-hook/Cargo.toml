@@ -3,6 +3,10 @@ name = "sift-hook"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Companion hook binary for sift — records AI-agent file writes into the sift snapshot ledger."
+keywords = ["ai", "agent", "git-hook", "snapshot"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "sift-hook"

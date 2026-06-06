@@ -6,6 +6,10 @@ name = "sift-render"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Terminal-UI rendering library for sift, the per-turn snapshot oracle for AI-agent file writes."
+keywords = ["ai", "agent", "tui", "ratatui"]
+categories = ["command-line-interface"]
 
 [lib]
 name = "sift_tui"
