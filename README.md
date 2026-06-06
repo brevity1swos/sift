@@ -2,6 +2,8 @@
 
 The per-turn snapshot oracle for your AI agent's file world.
 
+![demo](assets/demo.gif)
+
 ## Who actually uses sift
 
 **The agent — not you.** sift records every file the agent writes
