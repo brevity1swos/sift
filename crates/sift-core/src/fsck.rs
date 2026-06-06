@@ -207,8 +207,7 @@ pub struct Rewrite {
 /// 5. Write cleaned records atomically via temp-file + rename.
 pub fn repair_session(paths: &Paths, session_id: &str) -> Result<RepairReport> {
     let session_dir = paths.session_dir(session_id);
-    ensure_session_closed(&session_dir)
-        .context("fsck repair refuses to touch an open session")?;
+    ensure_session_closed(&session_dir).context("fsck repair refuses to touch an open session")?;
 
     let report = check_session(paths, session_id)?;
     let mut out = RepairReport {
@@ -268,7 +267,10 @@ pub fn repair_session(paths: &Paths, session_id: &str) -> Result<RepairReport> {
             .filter(|c| known.contains(&c.id))
             .collect();
 
-        let had_issues = out.issues.iter().any(|i| issue_file(i) == Some(changes_kind));
+        let had_issues = out
+            .issues
+            .iter()
+            .any(|i| issue_file(i) == Some(changes_kind));
         if had_issues {
             let dropped = parsed_count.saturating_sub(kept.len());
             let rewrite = rewrite_file(&path, changes_kind, &kept, dropped)?;
@@ -319,18 +321,9 @@ fn rewrite_file<T: serde::Serialize>(
 
     // Archive the original first so forensic inspection is always possible
     // even if the write below fails.
-    let archive = path.with_file_name(format!(
-        "{}.bad.{}",
-        kind.filename(),
-        ulid::Ulid::new()
-    ));
-    fs::rename(path, &archive).with_context(|| {
-        format!(
-            "archiving {} to {}",
-            path.display(),
-            archive.display()
-        )
-    })?;
+    let archive = path.with_file_name(format!("{}.bad.{}", kind.filename(), ulid::Ulid::new()));
+    fs::rename(path, &archive)
+        .with_context(|| format!("archiving {} to {}", path.display(), archive.display()))?;
 
     // Atomic write: temp file in the same dir, then rename over the final path.
     let parent = path
@@ -338,8 +331,8 @@ fn rewrite_file<T: serde::Serialize>(
         .ok_or_else(|| anyhow::anyhow!("no parent for {}", path.display()))?;
     let tmp = parent.join(format!(".{}.tmp.{}", kind.filename(), ulid::Ulid::new()));
     {
-        let mut f = File::create(&tmp)
-            .with_context(|| format!("creating temp file {}", tmp.display()))?;
+        let mut f =
+            File::create(&tmp).with_context(|| format!("creating temp file {}", tmp.display()))?;
         let mut kept = 0usize;
         for record in records {
             let line = serde_json::to_string(record)
@@ -609,7 +602,10 @@ mod tests {
         // A change for an id that doesn't exist in pending.jsonl.
         write_jsonl(
             &dir.join("pending_changes.jsonl"),
-            &[sample_change("01HVXK5QZ9G7B2A00000000999", Status::Accepted)],
+            &[sample_change(
+                "01HVXK5QZ9G7B2A00000000999",
+                Status::Accepted,
+            )],
         );
         let report = check_session(&paths, "orphan-1").unwrap();
         let orphans: Vec<_> = report
@@ -634,8 +630,7 @@ mod tests {
             // Junk line — terminated by \n so not truncated, but not valid JSON.
             f.write_all(b"NOT JSON\n").unwrap();
             // Another good record.
-            let good2 =
-                serde_json::to_string(&sample_entry("01HVXK5QZ9G7B2A00000000002")).unwrap();
+            let good2 = serde_json::to_string(&sample_entry("01HVXK5QZ9G7B2A00000000002")).unwrap();
             f.write_all(good2.as_bytes()).unwrap();
             f.write_all(b"\n").unwrap();
         }

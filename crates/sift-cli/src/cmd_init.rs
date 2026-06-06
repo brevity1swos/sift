@@ -17,9 +17,9 @@ impl ToolTarget {
             "claude" => Ok(Self::Claude),
             "gemini" => Ok(Self::Gemini),
             "cline" => Ok(Self::Cline),
-            other => anyhow::bail!(
-                "unknown tool '{other}' — expected 'claude', 'gemini', or 'cline'"
-            ),
+            other => {
+                anyhow::bail!("unknown tool '{other}' — expected 'claude', 'gemini', or 'cline'")
+            }
         }
     }
 }
@@ -141,8 +141,7 @@ fn install_post_commit_hook(cwd: &Path) -> Result<()> {
         );
         return Ok(());
     }
-    fs::create_dir_all(&hooks_dir)
-        .with_context(|| format!("creating {}", hooks_dir.display()))?;
+    fs::create_dir_all(&hooks_dir).with_context(|| format!("creating {}", hooks_dir.display()))?;
 
     let hook_path = hooks_dir.join("post-commit");
     if hook_path.exists() {
@@ -151,19 +150,14 @@ fn install_post_commit_hook(cwd: &Path) -> Result<()> {
             println!("  post-commit hook already installed (sift-managed)");
             return Ok(());
         }
-        println!(
-            "  post-commit hook exists and is not sift-managed — not overwriting."
-        );
-        println!(
-            "  to enable auto-accept-on-commit, add this line to your existing hook:"
-        );
+        println!("  post-commit hook exists and is not sift-managed — not overwriting.");
+        println!("  to enable auto-accept-on-commit, add this line to your existing hook:");
         println!("      sift accept --by-commit HEAD --apply --quiet");
         return Ok(());
     }
 
     let script = POST_COMMIT_HOOK_TEMPLATE;
-    fs::write(&hook_path, script)
-        .with_context(|| format!("writing {}", hook_path.display()))?;
+    fs::write(&hook_path, script).with_context(|| format!("writing {}", hook_path.display()))?;
     make_executable(&hook_path)?;
     println!(
         "  installed post-commit hook at {} (commits will auto-accept matching sift entries)",
@@ -201,8 +195,7 @@ fn make_executable(path: &Path) -> Result<()> {
         .with_context(|| format!("stat {}", path.display()))?
         .permissions();
     perms.set_mode(0o755);
-    fs::set_permissions(path, perms)
-        .with_context(|| format!("chmod 755 {}", path.display()))?;
+    fs::set_permissions(path, perms).with_context(|| format!("chmod 755 {}", path.display()))?;
     Ok(())
 }
 
@@ -292,8 +285,7 @@ fn init_gemini(cwd: &Path, global: bool) -> Result<()> {
 fn init_cline(cwd: &Path) -> Result<()> {
     // Cline uses .clinerules/hooks/ directory with script files.
     let hooks_dir = cwd.join(".clinerules").join("hooks");
-    fs::create_dir_all(&hooks_dir)
-        .with_context(|| format!("creating {}", hooks_dir.display()))?;
+    fs::create_dir_all(&hooks_dir).with_context(|| format!("creating {}", hooks_dir.display()))?;
 
     let scripts = [
         ("pre-tool-use.sh", "#!/bin/sh\nsift-hook pre-tool\n"),
@@ -308,8 +300,7 @@ fn init_cline(cwd: &Path) -> Result<()> {
             println!("  skip {name} (already exists)");
             continue;
         }
-        fs::write(&path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -325,16 +316,11 @@ fn init_cline(cwd: &Path) -> Result<()> {
 /// Read existing settings.json, merge sift hooks in, write back.
 /// If the file doesn't exist, create it with just the hooks.
 /// If hooks already point to sift-hook, skip silently.
-fn write_or_merge_json(
-    path: &Path,
-    new_hooks: serde_json::Value,
-    tool_name: &str,
-) -> Result<()> {
+fn write_or_merge_json(path: &Path, new_hooks: serde_json::Value, tool_name: &str) -> Result<()> {
     let mut existing: serde_json::Value = if path.exists() {
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        serde_json::from_str(&text)
-            .with_context(|| format!("parsing {}", path.display()))?
+        let text =
+            fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?
     } else {
         serde_json::json!({})
     };
@@ -345,16 +331,15 @@ fn write_or_merge_json(
     if let (Some(existing_h), Some(new_h)) = (existing_hooks, new_hooks_obj) {
         let existing_str = serde_json::to_string(existing_h).unwrap_or_default();
         if existing_str.contains("sift-hook") {
-            println!("sift: {tool_name} hooks already configured in {}", path.display());
+            println!(
+                "sift: {tool_name} hooks already configured in {}",
+                path.display()
+            );
             return Ok(());
         }
         // Merge: add new hook entries alongside existing ones.
         if let (Some(_), Some(new_map)) = (existing_h.as_object(), new_h.as_object()) {
-            let merged_hooks = existing
-                .get_mut("hooks")
-                .unwrap()
-                .as_object_mut()
-                .unwrap();
+            let merged_hooks = existing.get_mut("hooks").unwrap().as_object_mut().unwrap();
             for (key, value) in new_map {
                 if !merged_hooks.contains_key(key) {
                     merged_hooks.insert(key.clone(), value.clone());
@@ -364,7 +349,9 @@ fn write_or_merge_json(
                         if let Some(new_arr) = value.as_array() {
                             for item in new_arr {
                                 let item_str = serde_json::to_string(item).unwrap_or_default();
-                                if !item_str.contains("sift-hook") || !existing_str.contains("sift-hook") {
+                                if !item_str.contains("sift-hook")
+                                    || !existing_str.contains("sift-hook")
+                                {
                                     arr.extend(new_arr.iter().cloned());
                                     break;
                                 }
@@ -384,8 +371,7 @@ fn write_or_merge_json(
     }
 
     let text = serde_json::to_string_pretty(&existing)?;
-    fs::write(path, &text)
-        .with_context(|| format!("writing {}", path.display()))?;
+    fs::write(path, &text).with_context(|| format!("writing {}", path.display()))?;
     println!("sift: {tool_name} hooks configured in {}", path.display());
     Ok(())
 }

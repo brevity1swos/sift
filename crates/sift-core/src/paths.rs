@@ -12,19 +12,13 @@ use std::path::{Path, PathBuf};
 /// to locations outside the project root.
 pub fn validate_relative_path(path: &std::path::Path) -> anyhow::Result<()> {
     if path.is_absolute() {
-        anyhow::bail!(
-            "path must be relative, got absolute: {}",
-            path.display()
-        );
+        anyhow::bail!("path must be relative, got absolute: {}", path.display());
     }
     if path
         .components()
         .any(|c| c == std::path::Component::ParentDir)
     {
-        anyhow::bail!(
-            "path must not contain '..': {}",
-            path.display()
-        );
+        anyhow::bail!("path must not contain '..': {}", path.display());
     }
     Ok(())
 }

@@ -2,12 +2,7 @@ use anyhow::Result;
 use sift_core::store::Store;
 use std::path::Path;
 
-pub fn run(
-    cwd: &Path,
-    session: Option<String>,
-    path: Option<String>,
-    json: bool,
-) -> Result<()> {
+pub fn run(cwd: &Path, session: Option<String>, path: Option<String>, json: bool) -> Result<()> {
     let dir = crate::resolve_session_dir(cwd, session)?;
     let store = Store::new(&dir);
     let mut ledger = store.list_ledger()?;

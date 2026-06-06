@@ -36,11 +36,18 @@ fn resolve_session(paths: &Paths, explicit: Option<String>) -> Result<String> {
     }
     // Fall back to the `current` symlink — same resolution as `sift list` etc.
     let link = paths.current_symlink();
-    let target = std::fs::read_link(&link)
-        .map_err(|e| anyhow!("no session specified and no current session ({}): {e}", link.display()))?;
-    let name = target
-        .file_name()
-        .ok_or_else(|| anyhow!("current symlink target has no file_name: {}", target.display()))?;
+    let target = std::fs::read_link(&link).map_err(|e| {
+        anyhow!(
+            "no session specified and no current session ({}): {e}",
+            link.display()
+        )
+    })?;
+    let name = target.file_name().ok_or_else(|| {
+        anyhow!(
+            "current symlink target has no file_name: {}",
+            target.display()
+        )
+    })?;
     Ok(name.to_string_lossy().into_owned())
 }
 
@@ -62,9 +69,7 @@ fn validate_session_id(id: &str) -> Result<()> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        anyhow::bail!(
-            "session id {id:?} contains characters outside [A-Za-z0-9_-]"
-        );
+        anyhow::bail!("session id {id:?} contains characters outside [A-Za-z0-9_-]");
     }
     Ok(())
 }
@@ -113,18 +118,12 @@ fn describe(issue: &Issue) -> String {
         Issue::InvalidJson { file, offset, err } => {
             format!("invalid-json {} at offset {offset}: {err}", file)
         }
-        Issue::DuplicateId {
-            file,
-            id,
-            offsets,
-        } => format!(
-            "duplicate-id {} id={id} at offsets {:?}",
-            file, offsets
-        ),
-        Issue::OrphanTombstone { file, id, offset } => format!(
-            "orphan-tombstone {} id={id} at offset {offset}",
-            file
-        ),
+        Issue::DuplicateId { file, id, offsets } => {
+            format!("duplicate-id {} id={id} at offsets {:?}", file, offsets)
+        }
+        Issue::OrphanTombstone { file, id, offset } => {
+            format!("orphan-tombstone {} id={id} at offset {offset}", file)
+        }
     }
 }
 

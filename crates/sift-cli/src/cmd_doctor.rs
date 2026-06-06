@@ -171,9 +171,7 @@ fn probe_post_commit_hook(cwd: &Path) -> PostCommitHookStatus {
     }
     let hook = git_dir.join("hooks").join("post-commit");
     match fs::read_to_string(&hook) {
-        Ok(content) if content.contains("SIFT_MANAGED_HOOK=1") => {
-            PostCommitHookStatus::SiftManaged
-        }
+        Ok(content) if content.contains("SIFT_MANAGED_HOOK=1") => PostCommitHookStatus::SiftManaged,
         Ok(_) => PostCommitHookStatus::OtherTool,
         Err(_) => PostCommitHookStatus::NotInstalled,
     }
@@ -254,7 +252,9 @@ pub fn run(cwd: &Path, json: bool) -> Result<()> {
                 SiblingStatus::Ok | SiblingStatus::Unknown => {
                     "rgx detected; sift integration planned for v0.5".into()
                 }
-                _ => "install rgx: cargo install rgx-cli (sift integration planned for v0.5)".into(),
+                _ => {
+                    "install rgx: cargo install rgx-cli (sift integration planned for v0.5)".into()
+                }
             },
         },
     ];

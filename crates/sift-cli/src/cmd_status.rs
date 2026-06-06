@@ -34,10 +34,7 @@ pub fn run(cwd: &Path) -> Result<()> {
     let meta: Option<SessionMeta> = fs::read_to_string(session.meta_path())
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok());
-    let session_id = meta
-        .as_ref()
-        .map(|m| m.id.as_str())
-        .unwrap_or(&session.id);
+    let session_id = meta.as_ref().map(|m| m.id.as_str()).unwrap_or(&session.id);
 
     println!(
         "sift: session {} · turn {} · {} mode",
@@ -78,10 +75,7 @@ pub fn run(cwd: &Path) -> Result<()> {
                 .filter(|e| e.status == sift_core::Status::Reverted)
                 .count();
             println!();
-            println!(
-                "Ledger: {} accepted, {} reverted",
-                accepted, reverted
-            );
+            println!("Ledger: {} accepted, {} reverted", accepted, reverted);
         }
     }
 

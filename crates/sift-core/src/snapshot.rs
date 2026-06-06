@@ -35,8 +35,7 @@ pub fn sha1_hex(content: &[u8]) -> String {
 /// error (file was deleted between the agent's write and the commit)
 /// or a benign one (Delete-op entry, nothing on disk to hash).
 pub fn sha1_of_file(path: &Path) -> Result<String> {
-    let bytes = fs::read(path)
-        .with_context(|| format!("reading {} for SHA-1", path.display()))?;
+    let bytes = fs::read(path).with_context(|| format!("reading {} for SHA-1", path.display()))?;
     Ok(sha1_hex(&bytes))
 }
 

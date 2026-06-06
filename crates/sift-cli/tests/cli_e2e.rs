@@ -220,7 +220,10 @@ fn gc_compact_current_session() {
     );
     // All three entries were accepted, so pending.jsonl should be empty.
     let content_after = fs::read_to_string(&pending).unwrap_or_default();
-    let lines_after = content_after.lines().filter(|l| !l.trim().is_empty()).count();
+    let lines_after = content_after
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
     assert_eq!(
         lines_after, 0,
         "after compact+accept all, pending.jsonl should be empty"
@@ -404,7 +407,10 @@ fn accept_by_commit_dry_run_reports_match_without_finalizing() {
     assert!(out.status.success(), "dry-run should succeed");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("1 entries match"), "stdout: {stdout}");
-    assert!(stdout.contains("dry-run"), "should mention dry-run: {stdout}");
+    assert!(
+        stdout.contains("dry-run"),
+        "should mention dry-run: {stdout}"
+    );
 
     // Pending still has the entry.
     let list = Command::cargo_bin("sift")
@@ -650,7 +656,10 @@ fn init_twice_is_idempotent_on_hook() {
         "re-init should note already-installed: {stdout}"
     );
     let second = fs::read_to_string(td.path().join(".git/hooks/post-commit")).unwrap();
-    assert_eq!(first, second, "hook content should be stable across re-init");
+    assert_eq!(
+        first, second,
+        "hook content should be stable across re-init"
+    );
 }
 
 fn init_git(td: &TempDir) {
@@ -709,7 +718,10 @@ fn list_path_filter_keeps_only_matching_entries() {
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("src/a.rs"), "src/a.rs should appear: {stdout}");
+    assert!(
+        stdout.contains("src/a.rs"),
+        "src/a.rs should appear: {stdout}"
+    );
     assert!(
         !stdout.contains("tests/b.rs"),
         "tests/b.rs should be filtered out: {stdout}"

@@ -42,12 +42,7 @@ pub fn run(cwd: &Path, json: bool) -> Result<()> {
         let id = meta
             .as_ref()
             .map(|m| m.id.clone())
-            .unwrap_or_else(|| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .into_owned()
-            });
+            .unwrap_or_else(|| entry.file_name().to_string_lossy().into_owned());
         let started = meta
             .as_ref()
             .map(|m| m.started_at.format("%Y-%m-%d %H:%M:%S").to_string())

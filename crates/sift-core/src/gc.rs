@@ -93,9 +93,8 @@ pub fn collect(paths: &Paths, retention: Duration, dry_run: bool) -> Result<GcRe
         // Delete (or record for dry-run).
         result.deleted.push(session_id.clone());
         if !dry_run {
-            fs::remove_dir_all(&session_dir).with_context(|| {
-                format!("deleting session dir {}", session_dir.display())
-            })?;
+            fs::remove_dir_all(&session_dir)
+                .with_context(|| format!("deleting session dir {}", session_dir.display()))?;
         }
     }
 
@@ -146,7 +145,12 @@ mod tests {
 
         // Session closed 10 days ago — should be deleted with 7-day retention.
         let old_ended = now - Duration::days(10);
-        write_session(&paths, "old-session", old_ended - Duration::hours(1), Some(old_ended));
+        write_session(
+            &paths,
+            "old-session",
+            old_ended - Duration::hours(1),
+            Some(old_ended),
+        );
 
         let result = collect(&paths, Duration::days(7), false).unwrap();
         assert_eq!(result.deleted, vec!["old-session"]);
@@ -196,7 +200,12 @@ mod tests {
         let now = Utc::now();
 
         let old_ended = now - Duration::days(10);
-        write_session(&paths, "old-session", old_ended - Duration::hours(1), Some(old_ended));
+        write_session(
+            &paths,
+            "old-session",
+            old_ended - Duration::hours(1),
+            Some(old_ended),
+        );
 
         let result = collect(&paths, Duration::days(7), true).unwrap();
         assert_eq!(result.deleted, vec!["old-session"]);
@@ -265,7 +274,12 @@ mod tests {
 
         // Old closed — should be deleted.
         let old_ended = now - Duration::days(10);
-        write_session(&paths, "old-1", old_ended - Duration::hours(2), Some(old_ended));
+        write_session(
+            &paths,
+            "old-1",
+            old_ended - Duration::hours(2),
+            Some(old_ended),
+        );
         write_session(
             &paths,
             "old-2",
@@ -275,7 +289,12 @@ mod tests {
 
         // Young closed — should be skipped.
         let young_ended = now - Duration::days(1);
-        write_session(&paths, "young-1", young_ended - Duration::hours(1), Some(young_ended));
+        write_session(
+            &paths,
+            "young-1",
+            young_ended - Duration::hours(1),
+            Some(young_ended),
+        );
 
         // Open — should be skipped.
         write_session(&paths, "open-1", now - Duration::days(20), None);

@@ -272,7 +272,9 @@ fn main() -> Result<ExitCode> {
                     eprintln!("sift: tmux split-window failed — are you inside a tmux session?");
                 }
                 Err(_) => {
-                    eprintln!("sift: tmux not found — run `sift review` manually in another terminal");
+                    eprintln!(
+                        "sift: tmux not found — run `sift review` manually in another terminal"
+                    );
                 }
             }
         }

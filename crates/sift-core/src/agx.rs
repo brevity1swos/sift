@@ -71,7 +71,9 @@ impl AgxInfo {
 /// — there is no "agx is broken" state in sift.
 pub fn detect() -> Option<AgxInfo> {
     static CACHE: OnceLock<Option<AgxInfo>> = OnceLock::new();
-    CACHE.get_or_init(|| detect_with_timeout(probe_timeout())).clone()
+    CACHE
+        .get_or_init(|| detect_with_timeout(probe_timeout()))
+        .clone()
 }
 
 /// Uncached variant — runs the subprocess every call. Use `detect` in hot

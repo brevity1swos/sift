@@ -31,12 +31,11 @@ pub fn run(cwd: &Path, apply: bool) -> Result<()> {
     );
     for c in &candidates {
         let reason: std::borrow::Cow<str> = match &c.reason {
-            SweepReason::ExactDuplicateOf(p) => {
-                format!("duplicate of {}", p.display()).into()
-            }
-            SweepReason::FuzzyDuplicate { similar_to, similarity } => {
-                format!("~{similarity}% similar to {}", similar_to.display()).into()
-            }
+            SweepReason::ExactDuplicateOf(p) => format!("duplicate of {}", p.display()).into(),
+            SweepReason::FuzzyDuplicate {
+                similar_to,
+                similarity,
+            } => format!("~{similarity}% similar to {}", similar_to.display()).into(),
             SweepReason::SlopPattern(p) => format!("slop pattern: {p}").into(),
             SweepReason::OrphanMarkdown => "orphan markdown".into(),
         };

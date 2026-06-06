@@ -72,4 +72,3 @@ fn terminal_height() -> Option<usize> {
     // Use crossterm to query terminal size (already a workspace dep).
     crossterm::terminal::size().ok().map(|(_, h)| h as usize)
 }
-

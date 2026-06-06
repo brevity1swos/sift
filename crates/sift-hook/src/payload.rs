@@ -68,8 +68,8 @@ const KNOWN_HOOK_KEYS: &[&str] = &[
 /// deserialize the typed fields from that value. This avoids running the
 /// JSON parser twice on potentially large payloads.
 pub fn parse(input: &str) -> Result<HookEvent> {
-    let raw: Value = serde_json::from_str(input)
-        .with_context(|| format!("parsing hook event: {input}"))?;
+    let raw: Value =
+        serde_json::from_str(input).with_context(|| format!("parsing hook event: {input}"))?;
     let mut event: HookEvent = serde_json::from_value(raw.clone())
         .with_context(|| format!("deserializing hook event fields: {input}"))?;
 

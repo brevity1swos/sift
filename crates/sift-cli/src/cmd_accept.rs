@@ -91,10 +91,7 @@ pub fn run_by_commit(cwd: &Path, git_ref: &str, apply: bool, quiet: bool) -> Res
 
     if !quiet {
         println!("sift accept --by-commit {git_ref}:");
-        println!(
-            "  {} entries match committed content",
-            to_accept.len()
-        );
+        println!("  {} entries match committed content", to_accept.len());
         if !diverged.is_empty() {
             println!(
                 "  {} entries diverged (file changed since the agent wrote it — review manually)",

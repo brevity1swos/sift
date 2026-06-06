@@ -146,10 +146,7 @@ impl Store {
     /// earlier ones for the same id (last-write-wins). Changes with no
     /// matching entry id are silently ignored — they may appear transiently
     /// during concurrent reads/writes and are harmless.
-    fn apply_changes(
-        mut entries: Vec<LedgerEntry>,
-        changes: &[StatusChange],
-    ) -> Vec<LedgerEntry> {
+    fn apply_changes(mut entries: Vec<LedgerEntry>, changes: &[StatusChange]) -> Vec<LedgerEntry> {
         if changes.is_empty() {
             return entries;
         }
@@ -361,8 +358,7 @@ impl Store {
         // are now logically empty. Remove the file so orphan tombstones don't accumulate.
         let changes = self.pending_changes_path();
         if changes.exists() {
-            fs::remove_file(&changes)
-                .with_context(|| format!("removing {}", changes.display()))?;
+            fs::remove_file(&changes).with_context(|| format!("removing {}", changes.display()))?;
         }
         Ok(())
     }
@@ -376,8 +372,7 @@ impl Store {
         // Truncate the changes file by removing it.
         let changes = self.pending_changes_path();
         if changes.exists() {
-            fs::remove_file(&changes)
-                .with_context(|| format!("removing {}", changes.display()))?;
+            fs::remove_file(&changes).with_context(|| format!("removing {}", changes.display()))?;
         }
         Ok(())
     }
@@ -395,13 +390,11 @@ impl Store {
                     .with_context(|| format!("writing tmp {}", tmp.display()))?;
             }
         }
-        fs::rename(&tmp, self.ledger_path()).with_context(|| {
-            format!("renaming tmp -> ledger {}", self.ledger_path().display())
-        })?;
+        fs::rename(&tmp, self.ledger_path())
+            .with_context(|| format!("renaming tmp -> ledger {}", self.ledger_path().display()))?;
         let changes = self.ledger_changes_path();
         if changes.exists() {
-            fs::remove_file(&changes)
-                .with_context(|| format!("removing {}", changes.display()))?;
+            fs::remove_file(&changes).with_context(|| format!("removing {}", changes.display()))?;
         }
         Ok(())
     }

@@ -123,10 +123,7 @@ mod tests {
     #[test]
     fn deny_env_files() {
         let td = TempDir::new().unwrap();
-        let path = write_policy(
-            &td,
-            "rules:\n  - path: \".env*\"\n    action: deny\n",
-        );
+        let path = write_policy(&td, "rules:\n  - path: \".env*\"\n    action: deny\n");
         let p = Policy::load(&path).unwrap();
         assert_eq!(p.evaluate(Path::new(".env")), Action::Deny);
         assert_eq!(p.evaluate(Path::new(".env.local")), Action::Deny);
@@ -150,10 +147,7 @@ mod tests {
     #[test]
     fn review_action() {
         let td = TempDir::new().unwrap();
-        let path = write_policy(
-            &td,
-            "rules:\n  - path: \"*.sql\"\n    action: review\n",
-        );
+        let path = write_policy(&td, "rules:\n  - path: \"*.sql\"\n    action: review\n");
         let p = Policy::load(&path).unwrap();
         assert_eq!(p.evaluate(Path::new("schema.sql")), Action::Review);
         assert_eq!(p.evaluate(Path::new("src/foo.rs")), Action::Allow);

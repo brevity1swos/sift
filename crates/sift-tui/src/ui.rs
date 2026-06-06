@@ -165,8 +165,7 @@ fn draw_help_bar(f: &mut Frame, app: &App, area: Rect) {
     push_key_hint(&mut spans, "N", " match ");
     push_key_hint(&mut spans, "t", " agx ");
     push_key_hint(&mut spans, "q", "uit");
-    let bar =
-        Paragraph::new(Line::from(spans)).style(Style::default().fg(Color::DarkGray));
+    let bar = Paragraph::new(Line::from(spans)).style(Style::default().fg(Color::DarkGray));
     f.render_widget(bar, area);
 }
 
@@ -174,7 +173,10 @@ fn draw_help_bar(f: &mut Frame, app: &App, area: Rect) {
 /// `spans`. Keeps `draw_help_bar` linear and one-line-per-binding so
 /// adding or removing a key is a single line edit.
 fn push_key_hint<'a>(spans: &mut Vec<Span<'a>>, key: &'a str, action: &'a str) {
-    spans.push(Span::styled(key, Style::default().add_modifier(Modifier::BOLD)));
+    spans.push(Span::styled(
+        key,
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
     if !action.is_empty() {
         spans.push(Span::raw(action));
     }

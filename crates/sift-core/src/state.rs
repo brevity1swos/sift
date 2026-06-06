@@ -20,9 +20,7 @@ impl SessionState {
         let text = match fs::read_to_string(path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
-            Err(e) => {
-                return Err(e).with_context(|| format!("reading state {}", path.display()))
-            }
+            Err(e) => return Err(e).with_context(|| format!("reading state {}", path.display())),
         };
         serde_json::from_str(&text).with_context(|| format!("parsing state {}", path.display()))
     }

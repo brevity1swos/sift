@@ -83,11 +83,7 @@ pub fn detect(pending: &[LedgerEntry], project_root: &Path) -> Result<Vec<SweepC
 /// Rule 1b: fuzzy duplicate detection. For pending entries not already flagged,
 /// compare file contents pairwise. If two files are >80% similar (by line),
 /// flag the later one as a near-duplicate.
-fn detect_fuzzy_dups(
-    pending: &[LedgerEntry],
-    project_root: &Path,
-    out: &mut Vec<SweepCandidate>,
-) {
+fn detect_fuzzy_dups(pending: &[LedgerEntry], project_root: &Path, out: &mut Vec<SweepCandidate>) {
     use similar::TextDiff;
 
     // Collect non-flagged, non-delete entries with readable content.
@@ -98,7 +94,9 @@ fn detect_fuzzy_dups(
         .filter(|(_, e)| !out.iter().any(|c| c.entry_id == e.id))
         .filter_map(|(i, e)| {
             let path = project_root.join(&e.path);
-            std::fs::read_to_string(&path).ok().map(|content| (i, e, content))
+            std::fs::read_to_string(&path)
+                .ok()
+                .map(|content| (i, e, content))
         })
         .collect();
 
@@ -135,11 +133,7 @@ fn detect_fuzzy_dups(
 /// Keeps the earliest *non-slop* path as the canonical copy. If the first-seen
 /// path is itself a slop match and a later one is not, the direction flips so
 /// the slop file is flagged as the duplicate.
-fn detect_exact_dups(
-    pending: &[LedgerEntry],
-    globs: &GlobSet,
-    out: &mut Vec<SweepCandidate>,
-) {
+fn detect_exact_dups(pending: &[LedgerEntry], globs: &GlobSet, out: &mut Vec<SweepCandidate>) {
     let mut seen_hashes: HashMap<String, PathBuf> = HashMap::new();
     for e in pending {
         if e.op == Op::Delete {

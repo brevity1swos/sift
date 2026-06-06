@@ -71,12 +71,10 @@ fn handle_normal(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
         // identically to a wrapping `if !cycle` inside the arm body and
         // keeps clippy's `collapsible_if` happy.
         KeyCode::Char('n') if !app.cycle_search(1) => {
-            app.status_msg =
-                Some("no active search — press `/` to search entries".into());
+            app.status_msg = Some("no active search — press `/` to search entries".into());
         }
         KeyCode::Char('N') if !app.cycle_search(-1) => {
-            app.status_msg =
-                Some("no active search — press `/` to search entries".into());
+            app.status_msg = Some("no active search — press `/` to search entries".into());
         }
         // Suite-conventions §1 cross-tool key: `t` hands off to agx on the
         // current session's transcript. Feature-detected per §6 rule 2.

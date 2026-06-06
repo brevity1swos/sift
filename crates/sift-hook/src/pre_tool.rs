@@ -180,8 +180,7 @@ fn handle_bash_pre(
     let key = derive_key(raw);
     let staging_path = paths.staging_path(&session.id, &key);
     if let Some(p) = staging_path.parent() {
-        fs::create_dir_all(p)
-            .with_context(|| format!("creating staging dir {}", p.display()))?;
+        fs::create_dir_all(p).with_context(|| format!("creating staging dir {}", p.display()))?;
     }
 
     let record = BashStaging {

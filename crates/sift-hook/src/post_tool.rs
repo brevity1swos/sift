@@ -22,10 +22,7 @@ use crate::payload::HookEvent;
 use crate::pre_tool::{BashStaging, StagingRecord};
 
 pub fn run(event: HookEvent) -> Result<()> {
-    let project_root = event
-        .cwd
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("."));
+    let project_root = event.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let paths = Paths::new(&project_root);
 
     if paths.current_symlink().symlink_metadata().is_err() {
@@ -144,8 +141,8 @@ fn handle_bash_post(
         Err(_) => return Ok(()), // no pre-tool record
     };
 
-    let pre_time = std::time::UNIX_EPOCH
-        + std::time::Duration::from_millis(bash.timestamp_ms as u64);
+    let pre_time =
+        std::time::UNIX_EPOCH + std::time::Duration::from_millis(bash.timestamp_ms as u64);
 
     let snap = SnapshotStore::new(paths, &session.id);
     let turn = SessionState::load(&session.state_path())
@@ -204,10 +201,7 @@ fn handle_bash_post(
             Err(_) => continue,
         };
         let post_hash = snap.put(&bytes)?;
-        let diff_stats = stats(
-            "",
-            &String::from_utf8_lossy(&bytes),
-        );
+        let diff_stats = stats("", &String::from_utf8_lossy(&bytes));
 
         let ledger_entry = LedgerEntry {
             id: new_entry_id(),

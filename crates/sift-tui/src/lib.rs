@@ -7,12 +7,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use sift_core::{
-    entry::Status,
-    paths::Paths,
-    snapshot::SnapshotStore,
-    store::Store,
-};
+use sift_core::{entry::Status, paths::Paths, snapshot::SnapshotStore, store::Store};
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
@@ -76,11 +71,7 @@ fn handle_edit<B: ratatui::backend::Backend + Write>(
     let paths = Paths::new(&project_root);
 
     // Find the entry in pending.
-    let entry = app
-        .entries
-        .iter()
-        .find(|e| e.id == entry_id)
-        .cloned();
+    let entry = app.entries.iter().find(|e| e.id == entry_id).cloned();
     let Some(entry) = entry else { return Ok(()) };
     let Some(ref after_hash) = entry.snapshot_after else {
         return Ok(()); // nothing to edit (delete op)
@@ -96,7 +87,10 @@ fn handle_edit<B: ratatui::backend::Backend + Write>(
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("txt");
-    let tmp_path = std::env::temp_dir().join(format!("sift-edit-{}.{ext}", &entry_id[..8.min(entry_id.len())]));
+    let tmp_path = std::env::temp_dir().join(format!(
+        "sift-edit-{}.{ext}",
+        &entry_id[..8.min(entry_id.len())]
+    ));
     std::fs::write(&tmp_path, &content)
         .with_context(|| format!("writing temp file {}", tmp_path.display()))?;
 

@@ -43,9 +43,7 @@ impl Config {
         let text = match fs::read_to_string(path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
-            Err(e) => {
-                return Err(e).with_context(|| format!("reading config {}", path.display()))
-            }
+            Err(e) => return Err(e).with_context(|| format!("reading config {}", path.display())),
         };
         toml::from_str(&text).with_context(|| format!("parsing config {}", path.display()))
     }

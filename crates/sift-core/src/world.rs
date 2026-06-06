@@ -111,18 +111,17 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use std::path::Path;
 
-    fn entry(
-        turn: u32,
-        path: &str,
-        snap_after: Option<&str>,
-        status: Status,
-    ) -> LedgerEntry {
+    fn entry(turn: u32, path: &str, snap_after: Option<&str>, status: Status) -> LedgerEntry {
         LedgerEntry {
             id: format!("01HVXK5QZ9G7B2A0000000{turn:04}"),
             turn,
             tool: Tool::Write,
             path: path.into(),
-            op: if snap_after.is_some() { Op::Modify } else { Op::Delete },
+            op: if snap_after.is_some() {
+                Op::Modify
+            } else {
+                Op::Delete
+            },
             rationale: String::new(),
             diff_stats: DiffStats {
                 added: 0,
@@ -153,7 +152,10 @@ mod tests {
 
         // At and after the write: visible.
         let s = reconstruct_state_at_turn(&ledger, 1);
-        assert_eq!(s.get(Path::new("src/a.rs")).map(String::as_str), Some("hash_a"));
+        assert_eq!(
+            s.get(Path::new("src/a.rs")).map(String::as_str),
+            Some("hash_a")
+        );
         let s = reconstruct_state_at_turn(&ledger, 999);
         assert_eq!(s.len(), 1);
     }
@@ -167,11 +169,17 @@ mod tests {
 
         // At turn 1 we should only see v1.
         let s1 = reconstruct_state_at_turn(&ledger, 1);
-        assert_eq!(s1.get(Path::new("src/a.rs")).map(String::as_str), Some("hash_v1"));
+        assert_eq!(
+            s1.get(Path::new("src/a.rs")).map(String::as_str),
+            Some("hash_v1")
+        );
 
         // At turn 2 (and later) the override has happened.
         let s = reconstruct_state_at_turn(&ledger, 2);
-        assert_eq!(s.get(Path::new("src/a.rs")).map(String::as_str), Some("hash_v2"));
+        assert_eq!(
+            s.get(Path::new("src/a.rs")).map(String::as_str),
+            Some("hash_v2")
+        );
     }
 
     #[test]
@@ -187,7 +195,10 @@ mod tests {
 
         // After turn 2 (delete): gone.
         let s = reconstruct_state_at_turn(&ledger, 2);
-        assert!(s.is_empty(), "delete op should drop the path from the world");
+        assert!(
+            s.is_empty(),
+            "delete op should drop the path from the world"
+        );
     }
 
     #[test]
@@ -199,7 +210,10 @@ mod tests {
 
         let s = reconstruct_state_at_turn_with_options(&ledger, 999, IncludeReverted::Yes);
         assert_eq!(s.len(), 1, "include_reverted=Yes brings the entry back");
-        assert_eq!(s.get(Path::new("src/a.rs")).map(String::as_str), Some("hash_a"));
+        assert_eq!(
+            s.get(Path::new("src/a.rs")).map(String::as_str),
+            Some("hash_a")
+        );
     }
 
     #[test]
