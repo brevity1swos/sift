@@ -1,6 +1,7 @@
 /target
 /.sift
 /.omc
+/.claude
 *.sw?
 .*.sw?
 .DS_Store
