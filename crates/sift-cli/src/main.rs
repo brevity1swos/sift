@@ -31,7 +31,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Show session status and pending writes (default when no command given).
-    Status,
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
     /// List entries in the current (or specified) session.
     #[command(visible_alias = "ls")]
     List {
@@ -198,8 +201,11 @@ fn main() -> Result<ExitCode> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
     match cli.command {
-        None | Some(Commands::Status) => {
-            cmd_status::run(&cwd)?;
+        None => {
+            cmd_status::run(&cwd, false)?;
+        }
+        Some(Commands::Status { json }) => {
+            cmd_status::run(&cwd, json)?;
         }
         Some(Commands::List {
             pending,

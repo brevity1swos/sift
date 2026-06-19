@@ -694,6 +694,32 @@ fn bump_turn(td: &TempDir) {
 }
 
 #[test]
+fn status_json_reports_active_session_and_pending() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    write_via_hook(&td, "alpha.txt", b"hello\n");
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["status", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out).expect("status --json must emit valid JSON");
+    assert_eq!(v["active"], serde_json::json!(true));
+    assert!(v["pending"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["path"].as_str().unwrap().ends_with("alpha.txt")));
+}
+
+#[test]
 fn list_path_filter_keeps_only_matching_entries() {
     let td = TempDir::new().unwrap();
     start_session(&td);

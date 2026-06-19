@@ -1,6 +1,8 @@
 use anyhow::Result;
+use serde::Serialize;
 use sift_core::{
     config::{Config, Mode},
+    entry::LedgerEntry,
     paths::Paths,
     session::{Session, SessionMeta},
     state::SessionState,
@@ -9,11 +11,26 @@ use sift_core::{
 use std::fs;
 use std::path::Path;
 
-pub fn run(cwd: &Path) -> Result<()> {
+#[derive(Serialize)]
+struct StatusView<'a> {
+    active: bool,
+    session_id: &'a str,
+    turn: u32,
+    mode: &'a str,
+    pending: &'a [LedgerEntry],
+    accepted: usize,
+    reverted: usize,
+}
+
+pub fn run(cwd: &Path, json: bool) -> Result<()> {
     let paths = Paths::new(cwd);
 
     // No session?
     if paths.current_symlink().symlink_metadata().is_err() {
+        if json {
+            println!("{}", serde_json::json!({ "active": false }));
+            return Ok(());
+        }
         println!("sift: no active session");
         println!();
         println!("  Start one by opening a Claude Code session in a project");
@@ -36,14 +53,37 @@ pub fn run(cwd: &Path) -> Result<()> {
         .and_then(|t| serde_json::from_str(&t).ok());
     let session_id = meta.as_ref().map(|m| m.id.as_str()).unwrap_or(&session.id);
 
+    let store = Store::new(&session.dir);
+    let pending = store.list_pending().unwrap_or_default();
+    let ledger = store.list_ledger().unwrap_or_default();
+
+    let accepted = ledger
+        .iter()
+        .filter(|e| e.status == sift_core::Status::Accepted)
+        .count();
+    let reverted = ledger
+        .iter()
+        .filter(|e| e.status == sift_core::Status::Reverted)
+        .count();
+
+    if json {
+        let view = StatusView {
+            active: true,
+            session_id,
+            turn: state.turn,
+            mode: mode_str,
+            pending: &pending,
+            accepted,
+            reverted,
+        };
+        println!("{}", serde_json::to_string_pretty(&view)?);
+        return Ok(());
+    }
+
     println!(
         "sift: session {} · turn {} · {} mode",
         session_id, state.turn, mode_str
     );
-
-    let store = Store::new(&session.dir);
-    let pending = store.list_pending().unwrap_or_default();
-    let ledger = store.list_ledger().unwrap_or_default();
 
     if pending.is_empty() && ledger.is_empty() {
         println!();
@@ -66,14 +106,6 @@ pub fn run(cwd: &Path) -> Result<()> {
         }
 
         if !ledger.is_empty() {
-            let accepted = ledger
-                .iter()
-                .filter(|e| e.status == sift_core::Status::Accepted)
-                .count();
-            let reverted = ledger
-                .iter()
-                .filter(|e| e.status == sift_core::Status::Reverted)
-                .count();
             println!();
             println!("Ledger: {} accepted, {} reverted", accepted, reverted);
         }
