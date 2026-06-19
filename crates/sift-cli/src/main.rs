@@ -186,7 +186,7 @@ enum Commands {
         #[arg(long, default_value = "json")]
         format: String,
         /// Accepted for agent-guide consistency; state already emits JSON.
-        /// Present so `sift state --json` does not error. Forces JSON when set.
+        /// Present so `sift state --json` does not error; output is always JSON.
         #[arg(long)]
         json: bool,
     },
