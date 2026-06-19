@@ -108,6 +108,24 @@ pub fn new_entry_id() -> String {
     Ulid::new().to_string()
 }
 
+/// Count `(accepted, reverted)` entries in a ledger slice. Shared by the
+/// status / history / stop summaries so the two-status tally lives in one
+/// place. Pending and Edited entries count toward neither, matching the
+/// per-call-site filters this replaced.
+#[must_use]
+pub fn tally(entries: &[LedgerEntry]) -> (usize, usize) {
+    let mut accepted = 0;
+    let mut reverted = 0;
+    for e in entries {
+        match e.status {
+            Status::Accepted => accepted += 1,
+            Status::Reverted => reverted += 1,
+            Status::Pending | Status::Edited => {}
+        }
+    }
+    (accepted, reverted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

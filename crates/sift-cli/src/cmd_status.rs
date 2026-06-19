@@ -57,14 +57,7 @@ pub fn run(cwd: &Path, json: bool) -> Result<()> {
     let pending = store.list_pending().unwrap_or_default();
     let ledger = store.list_ledger().unwrap_or_default();
 
-    let accepted = ledger
-        .iter()
-        .filter(|e| e.status == sift_core::Status::Accepted)
-        .count();
-    let reverted = ledger
-        .iter()
-        .filter(|e| e.status == sift_core::Status::Reverted)
-        .count();
+    let (accepted, reverted) = sift_core::entry::tally(&ledger);
 
     if json {
         let view = StatusView {
