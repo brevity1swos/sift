@@ -32,6 +32,16 @@ pub struct HookEvent {
     pub raw: Value,
 }
 
+impl HookEvent {
+    /// Project root for this event: the reported `cwd`, or `.` when the
+    /// payload omits it. Shared by every hook handler so the fallback
+    /// lives in one place.
+    #[must_use]
+    pub fn project_root(&self) -> PathBuf {
+        self.cwd.clone().unwrap_or_else(|| PathBuf::from("."))
+    }
+}
+
 pub fn read_from_stdin() -> Result<HookEvent> {
     let mut buf = String::new();
     std::io::stdin()

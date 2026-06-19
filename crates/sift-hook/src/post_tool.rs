@@ -16,13 +16,12 @@ use sift_core::{
     store::Store,
 };
 use std::fs;
-use std::path::PathBuf;
 
 use crate::payload::HookEvent;
 use crate::pre_tool::{BashStaging, StagingRecord};
 
 pub fn run(event: HookEvent) -> Result<()> {
-    let project_root = event.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let project_root = event.project_root();
     let paths = Paths::new(&project_root);
 
     if paths.current_symlink().symlink_metadata().is_err() {

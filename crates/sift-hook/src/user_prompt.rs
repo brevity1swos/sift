@@ -14,13 +14,12 @@ use sift_core::{
     state::SessionState,
     store::Store,
 };
-use std::path::PathBuf;
 use std::process::ExitCode;
 
 use crate::payload::HookEvent;
 
 pub fn run(event: HookEvent) -> Result<ExitCode> {
-    let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
+    let project_root = event.project_root();
     let paths = Paths::new(&project_root);
 
     // No current session → nothing to gate. Let the prompt through.

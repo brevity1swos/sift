@@ -37,7 +37,7 @@ pub struct BashStaging {
 }
 
 pub fn run(event: HookEvent) -> Result<ExitCode> {
-    let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
+    let project_root = event.project_root();
     let paths = Paths::new(&project_root);
 
     if paths.current_symlink().symlink_metadata().is_err() {

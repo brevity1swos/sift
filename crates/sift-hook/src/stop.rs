@@ -1,14 +1,12 @@
 //! Stop hook handler: close the session and print a one-line summary.
 
 use anyhow::Result;
-use sift_core::{entry::Status, paths::Paths, session::Session, store::Store};
-use std::path::PathBuf;
+use sift_core::{paths::Paths, session::Session, store::Store};
 
 use crate::payload::HookEvent;
 
 pub fn run(event: HookEvent) -> Result<()> {
-    let project_root = event.cwd.unwrap_or_else(|| PathBuf::from("."));
-    let paths = Paths::new(project_root);
+    let paths = Paths::new(event.project_root());
     // Distinguish "no active session" (common: Claude started outside a
     // sift-enabled project) from "corrupted session state" (unusual but
     // worth surfacing). Only suppress the error when the symlink is
@@ -21,14 +19,7 @@ pub fn run(event: HookEvent) -> Result<()> {
     let store = Store::new(&session.dir);
     let pending = store.list_pending()?.len();
     let ledger = store.list_ledger()?;
-    let accepted = ledger
-        .iter()
-        .filter(|e| e.status == Status::Accepted)
-        .count();
-    let reverted = ledger
-        .iter()
-        .filter(|e| e.status == Status::Reverted)
-        .count();
+    let (accepted, reverted) = sift_core::entry::tally(&ledger);
     let total = ledger.len() + pending;
     eprintln!(
         "sift: {} writes · {} accepted · {} reverted · {} pending · {}",
