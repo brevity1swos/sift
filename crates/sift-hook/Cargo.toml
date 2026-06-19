@@ -18,7 +18,7 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 walkdir.workspace = true
-siftcore = { path = "../sift-core", version = "0.1.0" }
+siftcore = { path = "../sift-core", version = "0.1.1" }
 
 [dev-dependencies]
 assert_cmd.workspace = true

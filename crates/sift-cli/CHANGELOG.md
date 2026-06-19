@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-06-19
+
+### Bug Fixes
+
+- *(cli)* Expose --json on status
+- *(cli)* Expose --json on diff
+- *(cli)* Accept --json on state for agent-guide consistency
+
+### Documentation
+
+- *(cli)* Correct state --json doc comment (no-op, not 'forces json')
+- Reconcile agent-guide with real --json surface; guard with test
+- Add every_read_command_emits_json_under_json_flag integration test
+    that discovers a pending entry id, then asserts status/list/log/
+    history/fsck/state/diff each emit parseable JSON under --json.
+  - Fix Principle #1 in agent-guide: --format json is only accepted by
+    state and export (their default); all other read/query commands use
+    --json. Update wording to reflect the actual flag surface.
+  - Copy docs/agent-guide.md → crates/sift-cli/agent-guide.md;
+    confirmed byte-identical (diff empty).
+  - suite-conventions.md unchanged: no section governs agent-facing flags.
+- *(agent-guide)* Add status --json active-field note and diff --json example
+Document the two-shape contract for `sift status --json` (active:true
+  object vs {"active":false} singleton) so agents know to check the
+  `active` field before accessing other fields. Add a `sift diff <id>
+  --json` cookbook entry showing the `unified` string field for
+  machine-parseable diff output.
+
+### Refactoring
+
+- *(core)* Extract tally() for accepted/reverted counts
+Three sites (status, history, stop summaries) ran the same two-pass ledger
+  filter. Consolidate into one siftcore helper; Pending/Edited count toward
+  neither, matching the replaced filters.
+
+### Testing
+
+- *(cli)* Cover doctor --json in the read-command JSON guard
+
+
 ## [0.1.0] - 2026-06-06
 
 ### Bug Fixes

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-06-19
+
+### Refactoring
+
+- *(core)* Extract tally() for accepted/reverted counts
+Three sites (status, history, stop summaries) ran the same two-pass ledger
+  filter. Consolidate into one siftcore helper; Pending/Edited count toward
+  neither, matching the replaced filters.
+
+
 ## [0.1.0] - 2026-06-06
 
 ### Bug Fixes
