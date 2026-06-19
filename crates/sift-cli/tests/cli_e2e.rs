@@ -849,6 +849,7 @@ fn every_read_command_emits_json_under_json_flag() {
         ("list", vec!["list".into(), "--json".into()]),
         ("log", vec!["log".into(), "--json".into()]),
         ("history", vec!["history".into(), "--json".into()]),
+        ("doctor", vec!["doctor".into(), "--json".into()]),
         ("fsck", vec!["fsck".into(), "--json".into()]),
         (
             "state",
