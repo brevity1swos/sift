@@ -1,12 +1,14 @@
 use anyhow::{anyhow, Context, Result};
+use serde::Serialize;
 use sift_core::{
-    diff::unified, paths::Paths, session::Session, snapshot::SnapshotStore, store::Store,
+    diff::unified, entry::LedgerEntry, paths::Paths, session::Session, snapshot::SnapshotStore,
+    store::Store,
 };
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-pub fn run(cwd: &Path, entry_id: String) -> Result<()> {
+pub fn run(cwd: &Path, entry_id: String, json: bool) -> Result<()> {
     let paths = Paths::new(cwd);
     let session = Session::open_current(paths.clone())?;
     let store = Store::new(&session.dir);
@@ -31,6 +33,20 @@ pub fn run(cwd: &Path, entry_id: String) -> Result<()> {
     }
 
     let diff_output = unified(&before, &after, 3);
+    if json {
+        #[derive(Serialize)]
+        struct DiffView<'a> {
+            #[serde(flatten)]
+            entry: &'a LedgerEntry,
+            unified: String,
+        }
+        let view = DiffView {
+            entry: &entry,
+            unified: diff_output,
+        };
+        println!("{}", serde_json::to_string_pretty(&view)?);
+        return Ok(());
+    }
     page_output(&diff_output)
 }
 

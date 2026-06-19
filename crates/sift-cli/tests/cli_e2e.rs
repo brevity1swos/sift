@@ -770,3 +770,37 @@ fn list_path_filter_keeps_only_matching_entries() {
         "uppercase --path DOCS should still match docs/: {stdout_upper}"
     );
 }
+
+#[test]
+fn diff_json_includes_unified_and_entry_fields() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    write_via_hook(&td, "beta.txt", b"line one\nline two\n");
+
+    // Find the entry id via the list JSON.
+    let list = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let entries: serde_json::Value = serde_json::from_slice(&list).unwrap();
+    let id = entries[0]["id"].as_str().unwrap().to_string();
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["diff", &id, "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value =
+        serde_json::from_slice(&out).expect("diff --json must emit valid JSON");
+    assert!(v["path"].as_str().unwrap().ends_with("beta.txt"));
+    assert!(v["unified"].as_str().unwrap().contains("line two"));
+}

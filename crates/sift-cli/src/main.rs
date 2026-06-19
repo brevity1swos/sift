@@ -63,7 +63,11 @@ enum Commands {
     },
     /// Show a unified diff for a specific entry.
     #[command(visible_alias = "d")]
-    Diff { id: String },
+    Diff {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Accept pending entries. Either pass a target (`all`, `turn-N`, or an
     /// id prefix) OR use `--by-commit <ref>` to accept everything the given
     /// git commit endorsed (path + content-hash match).
@@ -223,8 +227,8 @@ fn main() -> Result<ExitCode> {
         }) => {
             cmd_log::run(&cwd, session, path, json)?;
         }
-        Some(Commands::Diff { id }) => {
-            cmd_diff::run(&cwd, id)?;
+        Some(Commands::Diff { id, json }) => {
+            cmd_diff::run(&cwd, id, json)?;
         }
         Some(Commands::Accept {
             target,
