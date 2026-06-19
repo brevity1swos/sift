@@ -94,6 +94,16 @@ restore is byte-exact via the SHA-1-addressed snapshot store.
 sift status --json
 ```
 
+Check the `active` field first. When `false`, no session is running
+and the other fields are absent:
+
+```json
+{"active": false}
+```
+
+When a session is active, the object includes: `active:true`,
+`session_id`, `turn`, `mode`, `pending[]`, `accepted`, `reverted`.
+
 Returns mode (loose / strict), session id, pending count, ledger
 totals. If pending > 0 and the user is about to commit, suggest
 they review.
@@ -108,6 +118,16 @@ sift d <id-prefix>
 exports — `sift export --session <id> --format json` (Phase 1.7.2,
 shipped soon) gives you full ledger entries including snapshot
 hashes you can pull from `.sift/sessions/<id>/snapshots/`.
+
+For a machine-parseable diff of a single entry, use:
+
+```bash
+sift diff <id-prefix> --json
+```
+
+Returns the entry fields plus a `unified` string field containing
+the full unified diff text. Parse `unified` instead of scraping
+the pager output.
 
 ### "Are agx and rgx installed?"
 
