@@ -11,10 +11,11 @@ unless something needs their attention.
 
 ## Operating principles
 
-1. **Default to JSON output.** Every sift command supports
-   `--format json` (or `--json`). Parse the JSON; render a brief
-   natural-language summary back to the user. Do not paste raw JSON
-   into the chat unless they ask to see it.
+1. **Default to JSON output.** Every read/query command supports
+   `--json`. (`sift state` and `sift export` additionally accept
+   `--format json`, which is their default.) Parse the JSON; render
+   a brief natural-language summary back to the user. Do not paste
+   raw JSON into the chat unless they ask to see it.
 2. **Resolve id prefixes.** Sift entry ids are 26-char ULIDs. The
    user will say "the third edit" or "that one with auth" — you
    look up the matching entry via `sift list --json`, pick its

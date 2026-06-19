@@ -824,3 +824,55 @@ fn state_accepts_json_flag_and_emits_object() {
         serde_json::from_slice(&out).expect("state --json must emit valid JSON");
     assert!(v.is_object(), "state emits a path->hash map object");
 }
+
+#[test]
+fn every_read_command_emits_json_under_json_flag() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    write_via_hook(&td, "delta.txt", b"a\nb\n");
+
+    let list = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["list", "--pending", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let entries: serde_json::Value = serde_json::from_slice(&list).unwrap();
+    let id = entries[0]["id"].as_str().unwrap().to_string();
+
+    // (label, args) for every command the agent-guide tells the agent to call.
+    let cases: Vec<(&str, Vec<String>)> = vec![
+        ("status", vec!["status".into(), "--json".into()]),
+        ("list", vec!["list".into(), "--json".into()]),
+        ("log", vec!["log".into(), "--json".into()]),
+        ("history", vec!["history".into(), "--json".into()]),
+        ("fsck", vec!["fsck".into(), "--json".into()]),
+        (
+            "state",
+            vec![
+                "state".into(),
+                "--at-turn".into(),
+                "99".into(),
+                "--json".into(),
+            ],
+        ),
+        ("diff", vec!["diff".into(), id.clone(), "--json".into()]),
+    ];
+
+    for (label, args) in cases {
+        let out = Command::cargo_bin("sift")
+            .unwrap()
+            .current_dir(td.path())
+            .args(&args)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        serde_json::from_slice::<serde_json::Value>(&out)
+            .unwrap_or_else(|e| panic!("`sift {label} --json` did not emit valid JSON: {e}"));
+    }
+}
