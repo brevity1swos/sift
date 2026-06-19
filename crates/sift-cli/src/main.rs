@@ -185,6 +185,10 @@ enum Commands {
         /// Output format. Currently json only; reserved for future formats.
         #[arg(long, default_value = "json")]
         format: String,
+        /// Accepted for agent-guide consistency; state already emits JSON.
+        /// Present so `sift state --json` does not error. Forces JSON when set.
+        #[arg(long)]
+        json: bool,
     },
     /// Check (or repair) ledger JSONL integrity: truncated tails, duplicate ids, orphan tombstones.
     Fsck {
@@ -311,6 +315,7 @@ fn main() -> Result<ExitCode> {
             include_reverted,
             baseline,
             format,
+            json: _,
         }) => {
             cmd_state::run(&cwd, session, at_turn, include_reverted, baseline, &format)?;
         }

@@ -804,3 +804,23 @@ fn diff_json_includes_unified_and_entry_fields() {
     assert!(v["path"].as_str().unwrap().ends_with("beta.txt"));
     assert!(v["unified"].as_str().unwrap().contains("line two"));
 }
+
+#[test]
+fn state_accepts_json_flag_and_emits_object() {
+    let td = TempDir::new().unwrap();
+    start_session(&td);
+    write_via_hook(&td, "gamma.txt", b"x\n");
+
+    let out = Command::cargo_bin("sift")
+        .unwrap()
+        .current_dir(td.path())
+        .args(["state", "--at-turn", "99", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value =
+        serde_json::from_slice(&out).expect("state --json must emit valid JSON");
+    assert!(v.is_object(), "state emits a path->hash map object");
+}
