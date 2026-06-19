@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-06-19
+
+### Refactoring
+
+- *(hook)* Add HookEvent::project_root() to DRY cwd fallback
+Five hook handlers repeated event.cwd.unwrap_or_else(|| PathBuf::from(".")),
+  one with a gratuitous clone. Move the fallback onto HookEvent so each handler
+  is a single call and the spurious clone is gone.
+
+
 ## [0.1.0] - 2026-06-06
 
 ### Bug Fixes
