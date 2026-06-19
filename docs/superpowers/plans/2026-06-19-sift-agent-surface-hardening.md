@@ -12,7 +12,7 @@
 
 - Both repos are `brevity1swos` OSS tier: Conventional Commits (strict), `Co-Authored-By` trailer **allowed and expected**. End commits with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - Run `gh auth switch --user brevity1swos` before any `gh` operation. Do not push unless the user asks.
-- sift: MSRV/edition per workspace; `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` must all pass clean.
+- sift: MSRV/edition per workspace; `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` must all pass clean. NOTE: the CLI crate lives in `crates/sift-cli/` but its cargo package name is **`sift-tui`** — always use `-p sift-tui` in cargo commands (`-p sift-cli` errors).
 - agx: `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean; MSRV 1.85 / edition 2024.
 - Default (no `--json`) output of every command must remain **byte-for-byte unchanged** — humans depend on it.
 - sift public surface must not mention agx/sift/stepwise synergy beyond what already exists. This change touches none of that.
@@ -63,7 +63,7 @@ fn status_json_reports_active_session_and_pending() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p sift-cli --test cli_e2e status_json_reports_active_session_and_pending`
+Run: `cargo test -p sift-tui --test cli_e2e status_json_reports_active_session_and_pending`
 Expected: FAIL — clap rejects `--json` (`error: unexpected argument '--json'`), assert non-success.
 
 - [ ] **Step 3: Add the `json` flag to the `Status` variant**
@@ -153,12 +153,12 @@ Leave the existing human-output block (the `if pending.is_empty() && ledger.is_e
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cargo test -p sift-cli --test cli_e2e status_json_reports_active_session_and_pending`
+Run: `cargo test -p sift-tui --test cli_e2e status_json_reports_active_session_and_pending`
 Expected: PASS
 
 - [ ] **Step 6: Verify human output unchanged + lints**
 
-Run: `cargo test -p sift-cli && cargo clippy -p sift-cli --all-targets -- -D warnings && cargo fmt --check`
+Run: `cargo test -p sift-tui && cargo clippy -p sift-tui --all-targets -- -D warnings && cargo fmt --check`
 Expected: all green (existing `status`-dependent tests still pass → human output unchanged).
 
 - [ ] **Step 7: Commit**
@@ -224,7 +224,7 @@ fn diff_json_includes_unified_and_entry_fields() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p sift-cli --test cli_e2e diff_json_includes_unified_and_entry_fields`
+Run: `cargo test -p sift-tui --test cli_e2e diff_json_includes_unified_and_entry_fields`
 Expected: FAIL — clap rejects `--json` on `diff`.
 
 - [ ] **Step 3: Add the `json` flag to the `Diff` variant**
@@ -273,12 +273,12 @@ In `crates/sift-cli/src/cmd_diff.rs`, add `use serde::Serialize;` and `use sift_
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cargo test -p sift-cli --test cli_e2e diff_json_includes_unified_and_entry_fields`
+Run: `cargo test -p sift-tui --test cli_e2e diff_json_includes_unified_and_entry_fields`
 Expected: PASS
 
 - [ ] **Step 6: Lints + full suite**
 
-Run: `cargo test -p sift-cli && cargo clippy -p sift-cli --all-targets -- -D warnings && cargo fmt --check`
+Run: `cargo test -p sift-tui && cargo clippy -p sift-tui --all-targets -- -D warnings && cargo fmt --check`
 Expected: all green.
 
 - [ ] **Step 7: Commit**
@@ -328,7 +328,7 @@ fn state_accepts_json_flag_and_emits_object() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p sift-cli --test cli_e2e state_accepts_json_flag_and_emits_object`
+Run: `cargo test -p sift-tui --test cli_e2e state_accepts_json_flag_and_emits_object`
 Expected: FAIL — `error: unexpected argument '--json' found`.
 
 - [ ] **Step 3: Add the accepted `--json` flag to the `State` variant**
@@ -346,12 +346,12 @@ In the `State { .. }` dispatch arm, bind the new field but ignore it (output is 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p sift-cli --test cli_e2e state_accepts_json_flag_and_emits_object`
+Run: `cargo test -p sift-tui --test cli_e2e state_accepts_json_flag_and_emits_object`
 Expected: PASS
 
 - [ ] **Step 5: Lints + commit**
 
-Run: `cargo clippy -p sift-cli --all-targets -- -D warnings && cargo fmt --check`
+Run: `cargo clippy -p sift-tui --all-targets -- -D warnings && cargo fmt --check`
 
 ```bash
 git add crates/sift-cli/src/main.rs crates/sift-cli/tests/cli_e2e.rs
@@ -425,7 +425,7 @@ fn every_read_command_emits_json_under_json_flag() {
 
 - [ ] **Step 2: Run the guard to verify it passes**
 
-Run: `cargo test -p sift-cli --test cli_e2e every_read_command_emits_json_under_json_flag`
+Run: `cargo test -p sift-tui --test cli_e2e every_read_command_emits_json_under_json_flag`
 Expected: PASS (Tasks 1–3 already landed the support). If it FAILS, a command is still missing `--json` — fix that command before continuing.
 
 - [ ] **Step 3: Reconcile the agent-guide (both copies)**
@@ -447,7 +447,7 @@ If a convention section governs agent-facing flags, add/adjust one line: *"Read/
 
 - [ ] **Step 5: Full suite + lints**
 
-Run: `cargo test -p sift-cli && cargo clippy -p sift-cli --all-targets -- -D warnings && cargo fmt --check`
+Run: `cargo test -p sift-tui && cargo clippy -p sift-tui --all-targets -- -D warnings && cargo fmt --check`
 Expected: all green.
 
 - [ ] **Step 6: Commit**
