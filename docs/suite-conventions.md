@@ -162,7 +162,9 @@ release note; silent breaks are bugs.
   session file path or a session ID; step is a 0-indexed integer.
   Must launch the TUI on the specified step.
 - **`agx --version`** — stable machine-parseable format
-  (`agx X.Y.Z (<features>)`). Used by sift's `doctor` subcommand.
+  (`agx X.Y.Z`). Used by sift's `doctor` subcommand, which reads the
+  first `X.Y.Z` token. Compiled-in features are reported by
+  `agx doctor --json`, not by `--version`.
 
 ### rgx → public for sift and agx
 
@@ -315,8 +317,7 @@ opportunistically when the affected code changes for other reasons.
 
 | Item | Target | Current | Notes |
 |---|---|---|---|
-| agx `doctor` | report siblings | not shipped | Retrofit from sift's `doctor` design (shipped v0.3). |
-| rgx `doctor` | report siblings | not shipped | Same. |
+| rgx `doctor` | report siblings | not shipped | Retrofit from sift's `doctor` design (shipped v0.3). |
 | agx overlay rendering | decorate timeline + diff turn pair | not shipped | Downstream consumer of sift's Phase 1.7 substrate. Agx-side; tracked in agx's roadmap. Sift-side requires no coordination — ships on agx's cadence. |
 
 **Closed (shipped):**
@@ -329,6 +330,8 @@ opportunistically when the affected code changes for other reasons.
   legacy `a`=accept removed in v0.4. Recorded in §1.
 - sift annotate key (`a`): flipped from `n` in v0.4. Recorded in §1.
 - sift search (`/` + `n` / `N`): added in v0.4. Recorded in §1.
+- agx `doctor`: shipped in agx v0.3 (`agx doctor [--json]`), reporting
+  agx version and features plus agx-mcp, sift and rgx presence.
 
 ---
 
